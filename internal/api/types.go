@@ -1060,3 +1060,132 @@ type OutputChatList struct {
 	Count int          `json:"count"`
 	Query string       `json:"query,omitempty"`
 }
+
+// --- Email Types ---
+
+// EmailAddress represents an email address with optional name
+type EmailAddress struct {
+	MailAddress string `json:"mail_address,omitempty"`
+	Name        string `json:"name,omitempty"`
+}
+
+// EmailAttachment represents an attachment in an email
+type EmailAttachment struct {
+	Filename       string `json:"filename,omitempty"`
+	ID             string `json:"id,omitempty"`
+	AttachmentType int    `json:"attachment_type,omitempty"` // 1=standard, 2=oversized
+	IsInline       bool   `json:"is_inline,omitempty"`
+	CID            string `json:"cid,omitempty"`
+}
+
+// EmailMessage represents an email message from the Mail API
+type EmailMessage struct {
+	MessageID     string            `json:"message_id,omitempty"`
+	Subject       string            `json:"subject,omitempty"`
+	From          *EmailAddress     `json:"head_from,omitempty"`
+	To            []EmailAddress    `json:"to,omitempty"`
+	CC            []EmailAddress    `json:"cc,omitempty"`
+	BCC           []EmailAddress    `json:"bcc,omitempty"`
+	BodyHTML      string            `json:"body_html,omitempty"`      // base64url encoded
+	BodyPlainText string            `json:"body_plain_text,omitempty"` // base64url encoded
+	InternalDate  string            `json:"internal_date,omitempty"`  // Unix ms timestamp
+	MessageState  int               `json:"message_state,omitempty"`
+	SMTPMessageID string            `json:"smtp_message_id,omitempty"`
+	ThreadID      string            `json:"thread_id,omitempty"`
+	Attachments   []EmailAttachment `json:"attachments,omitempty"`
+}
+
+// --- Email API Response Types ---
+
+// ListEmailsResponse is the response from GET /mail/v1/user_mailboxes/:id/messages
+type ListEmailsResponse struct {
+	BaseResponse
+	Data struct {
+		Items     []string `json:"items,omitempty"` // message IDs
+		PageToken string   `json:"page_token,omitempty"`
+		HasMore   bool     `json:"has_more"`
+	} `json:"data,omitempty"`
+}
+
+// GetEmailResponse is the response from GET /mail/v1/user_mailboxes/:id/messages/:message_id
+type GetEmailResponse struct {
+	BaseResponse
+	Data struct {
+		Message *EmailMessage `json:"message,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// AttachmentDownloadURL represents a download URL for an attachment
+type AttachmentDownloadURL struct {
+	AttachmentID string `json:"attachment_id,omitempty"`
+	DownloadURL  string `json:"download_url,omitempty"`
+}
+
+// GetAttachmentDownloadURLsResponse is the response from GET .../attachments/download_url
+type GetAttachmentDownloadURLsResponse struct {
+	BaseResponse
+	Data struct {
+		DownloadURLs []AttachmentDownloadURL `json:"download_urls,omitempty"`
+		FailedIDs    []string                `json:"failed_ids,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// --- Email CLI Output Types ---
+
+// OutputEmailAddress is the simplified email address format for CLI output
+type OutputEmailAddress struct {
+	Email string `json:"email"`
+	Name  string `json:"name,omitempty"`
+}
+
+// OutputEmailAttachment is the simplified attachment format for CLI output
+type OutputEmailAttachment struct {
+	ID       string `json:"id"`
+	Filename string `json:"filename"`
+	Type     string `json:"type"` // "standard" or "oversized"
+	IsInline bool   `json:"is_inline,omitempty"`
+}
+
+// OutputEmail is the simplified email format for CLI output
+type OutputEmail struct {
+	MessageID   string                  `json:"message_id"`
+	Subject     string                  `json:"subject,omitempty"`
+	From        *OutputEmailAddress     `json:"from,omitempty"`
+	To          []OutputEmailAddress    `json:"to,omitempty"`
+	CC          []OutputEmailAddress    `json:"cc,omitempty"`
+	Date        string                  `json:"date,omitempty"` // ISO 8601
+	Body        string                  `json:"body,omitempty"` // decoded plain text
+	ThreadID    string                  `json:"thread_id,omitempty"`
+	Attachments []OutputEmailAttachment `json:"attachments,omitempty"`
+}
+
+// OutputEmailList is the list emails response for CLI
+type OutputEmailList struct {
+	Emails   []OutputEmail `json:"emails"`
+	Count    int           `json:"count"`
+	HasMore  bool          `json:"has_more,omitempty"`
+	MailboxID string       `json:"mailbox_id"`
+}
+
+// OutputEmailIDList is the list of email IDs response for CLI
+type OutputEmailIDList struct {
+	MessageIDs []string `json:"message_ids"`
+	Count      int      `json:"count"`
+	HasMore    bool     `json:"has_more,omitempty"`
+	MailboxID  string   `json:"mailbox_id"`
+}
+
+// OutputAttachmentDownload is the attachment download URLs response for CLI
+type OutputAttachmentDownload struct {
+	MessageID    string                        `json:"message_id"`
+	MailboxID    string                        `json:"mailbox_id"`
+	Downloads    []OutputAttachmentDownloadURL `json:"downloads"`
+	FailedIDs    []string                      `json:"failed_ids,omitempty"`
+}
+
+// OutputAttachmentDownloadURL is a single attachment download URL for CLI output
+type OutputAttachmentDownloadURL struct {
+	AttachmentID string `json:"attachment_id"`
+	Filename     string `json:"filename,omitempty"`
+	DownloadURL  string `json:"download_url"`
+}
