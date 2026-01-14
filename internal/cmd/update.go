@@ -13,14 +13,15 @@ import (
 )
 
 var (
-	updateSummary     string
-	updateDescription string
-	updateStart       string
-	updateEnd         string
-	updateLocation    string
-	updateColor       string
-	updateVisibility  string
-	updateNoNotify    bool
+	updateSummary         string
+	updateDescription     string
+	updateStart           string
+	updateEnd             string
+	updateLocation        string
+	updateColor           string
+	updateVisibility      string
+	updateAttendeeAbility string
+	updateNoNotify        bool
 )
 
 var updateCmd = &cobra.Command{
@@ -141,6 +142,14 @@ Examples:
 				output.Fatalf("VALIDATION_ERROR", "Invalid visibility: %s (use default, public, or private)", updateVisibility)
 			}
 		}
+		if updateAttendeeAbility != "" {
+			switch updateAttendeeAbility {
+			case "none", "can_see_others", "can_invite_others", "can_modify_event":
+				req.AttendeeAbility = updateAttendeeAbility
+			default:
+				output.Fatalf("VALIDATION_ERROR", "Invalid attendee-ability: %s (must be none, can_see_others, can_invite_others, or can_modify_event)", updateAttendeeAbility)
+			}
+		}
 
 		// Update event
 		event, err := client.UpdateEvent(cal.CalendarID, eventID, req)
@@ -166,5 +175,6 @@ func init() {
 	updateCmd.Flags().StringVar(&updateLocation, "location", "", "Event location")
 	updateCmd.Flags().StringVar(&updateColor, "color", "", "Event color (hex format, e.g., #9CA2A9)")
 	updateCmd.Flags().StringVar(&updateVisibility, "visibility", "", "Event visibility (default, public, or private)")
+	updateCmd.Flags().StringVar(&updateAttendeeAbility, "attendee-ability", "", "Guest permissions (none, can_see_others, can_invite_others, can_modify_event)")
 	updateCmd.Flags().BoolVar(&updateNoNotify, "no-notify", false, "Don't send notifications")
 }

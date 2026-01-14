@@ -185,17 +185,18 @@ func (c *Client) GetEvent(calendarID, eventID string) (*Event, error) {
 
 // CreateEventRequest contains the data for creating an event
 type CreateEventRequest struct {
-	Summary     string     `json:"summary,omitempty"`
-	Description string     `json:"description,omitempty"`
-	StartTime   *TimeInfo  `json:"start_time"`
-	EndTime     *TimeInfo  `json:"end_time"`
-	Location    *Location  `json:"location,omitempty"`
-	Color       int        `json:"color,omitempty"`
-	Reminders   []Reminder `json:"reminders,omitempty"`
-	Recurrence  string     `json:"recurrence,omitempty"`
-	Vchat       *Vchat     `json:"vchat,omitempty"`
-	Visibility  string     `json:"visibility,omitempty"`
-	NeedNotify  *bool      `json:"need_notification,omitempty"`
+	Summary         string     `json:"summary,omitempty"`
+	Description     string     `json:"description,omitempty"`
+	StartTime       *TimeInfo  `json:"start_time"`
+	EndTime         *TimeInfo  `json:"end_time"`
+	Location        *Location  `json:"location,omitempty"`
+	Color           int        `json:"color,omitempty"`
+	Reminders       []Reminder `json:"reminders,omitempty"`
+	Recurrence      string     `json:"recurrence,omitempty"`
+	Vchat           *Vchat     `json:"vchat,omitempty"`
+	Visibility      string     `json:"visibility,omitempty"`
+	AttendeeAbility string     `json:"attendee_ability,omitempty"`
+	NeedNotify      *bool      `json:"need_notification,omitempty"`
 }
 
 // CreateEvent creates a new event
@@ -216,15 +217,16 @@ func (c *Client) CreateEvent(calendarID string, req *CreateEventRequest) (*Event
 
 // UpdateEventRequest contains the data for updating an event
 type UpdateEventRequest struct {
-	Summary     string     `json:"summary,omitempty"`
-	Description string     `json:"description,omitempty"`
-	StartTime   *TimeInfo  `json:"start_time,omitempty"`
-	EndTime     *TimeInfo  `json:"end_time,omitempty"`
-	Location    *Location  `json:"location,omitempty"`
-	Color       *int       `json:"color,omitempty"`
-	Reminders   []Reminder `json:"reminders,omitempty"`
-	Visibility  string     `json:"visibility,omitempty"`
-	NeedNotify  *bool      `json:"need_notification,omitempty"`
+	Summary         string     `json:"summary,omitempty"`
+	Description     string     `json:"description,omitempty"`
+	StartTime       *TimeInfo  `json:"start_time,omitempty"`
+	EndTime         *TimeInfo  `json:"end_time,omitempty"`
+	Location        *Location  `json:"location,omitempty"`
+	Color           *int       `json:"color,omitempty"`
+	Reminders       []Reminder `json:"reminders,omitempty"`
+	Visibility      string     `json:"visibility,omitempty"`
+	AttendeeAbility string     `json:"attendee_ability,omitempty"`
+	NeedNotify      *bool      `json:"need_notification,omitempty"`
 }
 
 // UpdateEvent updates an existing event

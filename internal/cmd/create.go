@@ -14,18 +14,19 @@ import (
 )
 
 var (
-	createSummary     string
-	createDescription string
-	createStart       string
-	createEnd         string
-	createDuration    string
-	createLocation    string
-	createColor       string
-	createReminder    int
-	createNoNotify    bool
-	createAttendees   []string
-	createVisibility  string
-	createExcludeSelf bool
+	createSummary         string
+	createDescription     string
+	createStart           string
+	createEnd             string
+	createDuration        string
+	createLocation        string
+	createColor           string
+	createReminder        int
+	createNoNotify        bool
+	createAttendees       []string
+	createVisibility      string
+	createAttendeeAbility string
+	createExcludeSelf     bool
 )
 
 var createCmd = &cobra.Command{
@@ -134,6 +135,18 @@ Examples:
 			}
 		}
 
+		// Default to can_invite_others to match Lark UI behavior
+		attendeeAbility := createAttendeeAbility
+		if attendeeAbility == "" {
+			attendeeAbility = "can_invite_others"
+		}
+		switch attendeeAbility {
+		case "none", "can_see_others", "can_invite_others", "can_modify_event":
+			req.AttendeeAbility = attendeeAbility
+		default:
+			output.Fatalf("VALIDATION_ERROR", "Invalid attendee-ability: %s (must be none, can_see_others, can_invite_others, or can_modify_event)", attendeeAbility)
+		}
+
 		// Create event
 		event, err := client.CreateEvent(cal.CalendarID, req)
 		if err != nil {
@@ -196,6 +209,7 @@ func init() {
 	createCmd.Flags().BoolVar(&createNoNotify, "no-notify", false, "Don't send notifications")
 	createCmd.Flags().StringSliceVar(&createAttendees, "attendee", []string{}, "Add attendee by email (repeatable)")
 	createCmd.Flags().StringVar(&createVisibility, "visibility", "", "Event visibility (default, public, private)")
+	createCmd.Flags().StringVar(&createAttendeeAbility, "attendee-ability", "", "Guest permissions (none, can_see_others, can_invite_others, can_modify_event)")
 	createCmd.Flags().BoolVar(&createExcludeSelf, "exclude-self", false, "Don't add yourself as an attendee")
 
 	createCmd.MarkFlagRequired("summary")

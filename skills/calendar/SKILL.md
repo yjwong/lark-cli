@@ -80,9 +80,11 @@ Time format: ISO 8601 (e.g., `2024-01-20T14:00:00+08:00` or `2024-01-20`)
 Duration formats: `30m`, `1h`, `1h30m`
 Color format: Hex (e.g., `#9CA2A9`)
 Visibility: `default`, `public`, or `private`
+Attendee ability (guest permissions): `none`, `can_see_others`, `can_invite_others`, or `can_modify_event`
 
 Additional flags:
 - `--exclude-self` - Don't add yourself as an attendee
+- `--attendee-ability` - Set guest permissions (see values above)
 
 ### Update Event
 ```bash
@@ -96,7 +98,7 @@ lark cal update <event-id> \
 lark cal update <event-id> --visibility public
 ```
 
-Available flags: `--summary`, `--description`, `--start`, `--end`, `--location`, `--color`, `--visibility`, `--no-notify`
+Available flags: `--summary`, `--description`, `--start`, `--end`, `--location`, `--color`, `--visibility`, `--attendee-ability`, `--no-notify`
 
 Visibility options: `default`, `public`, or `private`
 
