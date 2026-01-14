@@ -12,6 +12,7 @@ internal/
   cmd/            # Cobra command implementations
   config/         # Configuration handling
   conflicts/      # Conflict detection
+  mail/           # IMAP mail client with caching
   output/         # JSON/human-readable output formatting
   time/           # Date/time parsing
 ```
@@ -76,3 +77,19 @@ See `USAGE.md` for full CLI documentation. Main commands:
 - `doc get <document_id>` - Get document content as markdown
 - `doc blocks <document_id>` - Get document block structure (JSON)
 - `doc wiki <node_token>` - Resolve wiki node to document token
+
+### Mail (`mail`)
+- `mail setup` - Configure IMAP credentials (interactive)
+- `mail status` - Show connection and cache status
+- `mail list` - List mailboxes/folders
+- `mail sync` - Fetch new emails into local cache
+- `mail search` - Search cached emails (fast, local)
+- `mail show --uid <uid>` - Show email content
+- `mail fetch --uid <uid>` - Download as .eml file
+
+**Mail Architecture:**
+- Uses IMAP (not REST API) for better search capability
+- Local SQLite cache for O(1) search performance
+- Credentials stored in `$LARK_CONFIG_DIR/mail.json`
+- Cache stored in `$LARK_CONFIG_DIR/mail_cache.db`
+- Search results include `freshness` field for cache staleness

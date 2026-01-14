@@ -559,6 +559,183 @@ For large documents, use `jq` and `grep` to extract specific information:
 
 Prefer `doc get` for most use cases - it's 2-3x smaller.
 
+### Mail (IMAP)
+
+Email access via IMAP with local caching for fast search.
+
+#### Setup
+
+```bash
+# Configure IMAP credentials (interactive)
+./lark mail setup
+```
+
+This prompts for:
+- IMAP host (default: imap.larksuite.com)
+- Port (default: 993)
+- Username (your Lark email address)
+- Password (dedicated password from Lark Mail settings)
+
+To get your IMAP credentials, see: https://www.larksuite.com/hc/en-US/articles/378111206512-log-in-to-lark-mail-through-a-third-party-email-client
+
+1. Open Lark on desktop or web
+2. Go to Mail > Settings (gear icon) > Mail settings
+3. Select "Third-party email client"
+4. Enable IMAP and generate a dedicated password
+
+#### Check Status
+
+```bash
+./lark mail status
+```
+
+Output:
+```json
+{
+  "configured": true,
+  "host": "imap.larksuite.com",
+  "port": 993,
+  "username": "user@example.com",
+  "use_ssl": true,
+  "connection": "ok",
+  "cache": {
+    "last_sync": "2026-01-14T10:30:00+08:00",
+    "freshness": "15 minutes ago",
+    "uidvalidity": 12345,
+    "last_uid": 4521
+  }
+}
+```
+
+#### List Mailboxes
+
+```bash
+./lark mail list
+```
+
+Output:
+```json
+{
+  "mailboxes": ["INBOX", "Sent", "Drafts", "Trash"],
+  "count": 4
+}
+```
+
+#### Sync Emails
+
+Fetch new emails from the server into the local cache.
+
+```bash
+# Sync INBOX (default)
+./lark mail sync
+
+# Sync specific mailbox
+./lark mail sync --mailbox Sent
+```
+
+Output:
+```json
+{
+  "mailbox": "INBOX",
+  "new_messages": 5,
+  "total_cached": 1523,
+  "message": "synced 5 new messages"
+}
+```
+
+#### Search Emails
+
+Search the local cache (no network calls, very fast).
+
+```bash
+# List recent emails
+./lark mail search
+
+# Filter by sender
+./lark mail search --from alice@example.com
+
+# Filter by subject
+./lark mail search --subject "Q4 Report"
+
+# Filter by date range
+./lark mail search --since 2026-01-01 --before 2026-01-15
+
+# Combined filters with limit
+./lark mail search --from boss@example.com --since 2026-01-01 --limit 10
+
+# Different mailbox
+./lark mail search --mailbox Sent --from me@example.com
+```
+
+Output:
+```json
+{
+  "mailbox": "INBOX",
+  "last_sync": "2026-01-14T10:30:00+08:00",
+  "freshness": "15 minutes ago",
+  "total_cached": 1523,
+  "results": [
+    {
+      "uid": 4521,
+      "message_id": "<abc123@mail.example.com>",
+      "date": "2026-01-14T09:15:00+08:00",
+      "from_addr": "alice@example.com",
+      "from_name": "Alice",
+      "subject": "Q4 Report"
+    }
+  ],
+  "count": 1
+}
+```
+
+**Note:** The `freshness` field indicates how stale the cache is. If data is stale, run `lark mail sync` first.
+
+#### Show Email Content
+
+Fetch and display the full content of an email by UID.
+
+```bash
+./lark mail show --uid 4521
+```
+
+Output:
+```json
+{
+  "uid": 4521,
+  "from": {
+    "email": "alice@example.com",
+    "name": "Alice"
+  },
+  "subject": "Q4 Report",
+  "date": "2026-01-14T09:15:00+08:00",
+  "message_id": "<abc123@mail.example.com>",
+  "body": "Hi,\n\nPlease find the Q4 report attached...\n\nBest,\nAlice"
+}
+```
+
+#### Download Email as .eml
+
+Save an email as a standard .eml file.
+
+```bash
+# Download to current directory
+./lark mail fetch --uid 4521
+
+# Download to specific directory
+./lark mail fetch --uid 4521 --output ./emails/
+```
+
+Output:
+```json
+{
+  "success": true,
+  "uid": 4521,
+  "filename": "2026-01-14 Q4 Report.eml",
+  "path": "./emails/2026-01-14 Q4 Report.eml",
+  "size": 15234
+}
+```
+
 ## Input Formats
 
 ### Dates and Times

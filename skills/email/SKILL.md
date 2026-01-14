@@ -1,128 +1,159 @@
 ---
 name: email
-description: Read emails from Lark Mail - list messages, view email details, get attachment download URLs. Use when user asks about email, inbox, or messages.
+description: Read and search emails from Lark Mail via IMAP with local caching. Use when user asks about email, inbox, or messages.
 ---
 
 # Email Management Skill
 
-Read emails from Lark Mail via the `lark` CLI.
+Read and search emails from Lark Mail via the `lark` CLI using IMAP with local caching.
+
+## Setup
+
+Before using mail commands, IMAP credentials must be configured:
+
+```bash
+lark mail setup
+```
+
+This will prompt for IMAP credentials. See: https://www.larksuite.com/hc/en-US/articles/378111206512-log-in-to-lark-mail-through-a-third-party-email-client
 
 ## Running Commands
 
 Ensure `lark` is in your PATH, or use the full path to the binary. Set the config directory if not using the default:
 
 ```bash
-lark email <command>
+lark mail <command>
 # Or with explicit config:
-LARK_CONFIG_DIR=/path/to/.lark lark email <command>
+LARK_CONFIG_DIR=/path/to/.lark lark mail <command>
 ```
 
 ## Commands Reference
 
-### Check Authentication
+### Check Status
 ```bash
-lark auth status
+lark mail status
 ```
 
-### List Email IDs
+Shows connection status and cache freshness. The `freshness` field indicates how stale the cached data is.
+
+### List Mailboxes
 ```bash
-# List emails from INBOX (default)
-lark email list
-
-# List only unread emails
-lark email list --unread
-
-# Specify folder
-lark email list --folder INBOX
-
-# Limit results per page (1-20)
-lark email list --page-size 10
-
-# Fetch all emails (pagination handled automatically)
-lark email list --all
-
-# Specify mailbox (default: "me" for current user)
-lark email list --mailbox me
+lark mail list
 ```
 
-Returns a list of message IDs that can be used with `email show` to get full details.
+### Sync Emails
+Fetch new emails from the server into the local cache:
 
-### View Email Details
 ```bash
-# Get full email content
-lark email show --id <message_id>
+# Sync INBOX (default)
+lark mail sync
 
-# Example
-lark email show --id ZWEyNGRmY2QtOTVlNy00NzlhLTg5MjItMjFjOTQ5ZjIzZjJl
+# Sync specific mailbox
+lark mail sync --mailbox Sent
 ```
 
-Returns email metadata (subject, from, to, cc), decoded body text, and attachment info.
+**Important**: Run sync before searching if you need fresh data.
 
-### Get Attachment Download URLs
+### Search Emails
+Search the local cache (fast, no network calls):
+
 ```bash
-# Get download URLs for all attachments in an email
-lark email attachments --id <message_id>
+# List recent emails
+lark mail search
 
-# Example
-lark email attachments --id ZWEyNGRmY2QtOTVlNy00NzlhLTg5MjItMjFjOTQ5ZjIzZjJl
+# Filter by sender
+lark mail search --from alice@example.com
+
+# Filter by subject
+lark mail search --subject "Q4 Report"
+
+# Filter by date range
+lark mail search --since 2025-01-01 --before 2025-01-15
+
+# Combined filters
+lark mail search --from boss@example.com --since 2025-01-01 --limit 10
+
+# Search different mailbox
+lark mail search --mailbox Sent
 ```
 
-**Important**: Download URLs expire after 2 hours and are limited to 2 uses each.
+### View Email Content
+```bash
+lark mail show --uid <uid>
+```
+
+The UID is obtained from search results.
+
+### Download as .eml
+```bash
+lark mail fetch --uid <uid>
+lark mail fetch --uid <uid> --output ./emails/
+```
 
 ## Output Formats
 
-All commands output JSON:
+All commands output JSON.
 
-### email list Output
+### mail status Output
 ```json
 {
-  "message_ids": ["id1", "id2", "id3"],
-  "count": 3,
-  "has_more": true,
-  "mailbox_id": "me"
+  "configured": true,
+  "host": "imap.larksuite.com",
+  "port": 993,
+  "username": "user@example.com",
+  "connection": "ok",
+  "cache": {
+    "last_sync": "2025-01-14T10:30:00+08:00",
+    "freshness": "15 minutes ago",
+    "uidvalidity": 12345,
+    "last_uid": 4521
+  }
 }
 ```
 
-### email show Output
+### mail search Output
 ```json
 {
-  "message_id": "ZWEy...",
-  "subject": "Meeting Tomorrow",
+  "mailbox": "INBOX",
+  "last_sync": "2025-01-14T10:30:00+08:00",
+  "freshness": "15 minutes ago",
+  "total_cached": 1523,
+  "results": [
+    {
+      "uid": 4521,
+      "message_id": "<abc123@mail.example.com>",
+      "date": "2025-01-14T09:15:00+08:00",
+      "from_addr": "alice@example.com",
+      "from_name": "Alice",
+      "subject": "Q4 Report"
+    }
+  ],
+  "count": 1
+}
+```
+
+### mail show Output
+```json
+{
+  "uid": 4521,
   "from": {
-    "email": "sender@example.com",
-    "name": "John Doe"
+    "email": "alice@example.com",
+    "name": "Alice"
   },
-  "to": [
-    {"email": "recipient@example.com", "name": "Jane Smith"}
-  ],
-  "cc": [],
-  "date": "2024-01-15T10:30:00+08:00",
-  "body": "Plain text content of the email...",
-  "thread_id": "abc123",
-  "attachments": [
-    {
-      "id": "att1",
-      "filename": "document.pdf",
-      "type": "standard",
-      "is_inline": false
-    }
-  ]
+  "subject": "Q4 Report",
+  "date": "2025-01-14T09:15:00+08:00",
+  "message_id": "<abc123@mail.example.com>",
+  "body": "Hi,\n\nPlease find the Q4 report attached...\n\nBest,\nAlice"
 }
 ```
 
-### email attachments Output
+### mail sync Output
 ```json
 {
-  "message_id": "ZWEy...",
-  "mailbox_id": "me",
-  "downloads": [
-    {
-      "attachment_id": "att1",
-      "filename": "document.pdf",
-      "download_url": "https://..."
-    }
-  ],
-  "failed_ids": []
+  "mailbox": "INBOX",
+  "new_messages": 5,
+  "total_cached": 1523,
+  "message": "synced 5 new messages"
 }
 ```
 
@@ -138,35 +169,36 @@ Errors return JSON:
 ```
 
 Common error codes:
-- `AUTH_ERROR` - Need to run `lark auth login`
-- `NOT_FOUND` - Email or mailbox not found
-- `VALIDATION_ERROR` - Missing required fields (e.g., --id)
-- `API_ERROR` - Lark API issue
+- `CONNECTION_ERROR` - IMAP connection failed (check credentials)
+- `SYNC_ERROR` - Failed to sync emails
+- `SEARCH_ERROR` - Cache query failed
+- `VALIDATION_ERROR` - Missing required fields (e.g., --uid)
+- `IO_ERROR` - File system error
 
 ## Typical Workflow
 
-1. **List emails** to get message IDs:
+1. **Check cache freshness**:
    ```bash
-   lark email list --unread
+   lark mail status
    ```
 
-2. **View email details** for a specific message:
+2. **Sync if needed** (based on freshness):
    ```bash
-   lark email show --id <message_id>
+   lark mail sync
    ```
 
-3. **Download attachments** if needed:
+3. **Search emails**:
    ```bash
-   lark email attachments --id <message_id>
-   # Then use the download URLs to fetch files
+   lark mail search --from boss@example.com --since 2025-01-01
    ```
 
-## Required Scopes
+4. **View email details** using UID from search:
+   ```bash
+   lark mail show --uid 4521
+   ```
 
-The email commands require these Lark API scopes:
-- `mail:user_mailbox.message:readonly` - Core email access
-- `mail:user_mailbox.message.subject:read` - Email subjects
-- `mail:user_mailbox.message.address:read` - From/To/CC fields
-- `mail:user_mailbox.message.body:read` - Email body and attachments
+5. **Download if needed**:
+   ```bash
+   lark mail fetch --uid 4521
+   ```
 
-If some fields are missing from the response, ensure the app has the required scopes configured.
