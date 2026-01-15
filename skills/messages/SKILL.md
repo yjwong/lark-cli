@@ -1,11 +1,11 @@
 ---
 name: messages
-description: Retrieve chat message history and send messages in Lark - get messages from group chats, private chats, threads, and send messages to users or chats. Use when user asks about chat messages, conversation history, what was discussed in a group, or wants to send a message.
+description: Retrieve chat message history, send messages, and recall messages in Lark - get messages from group chats, private chats, threads, send messages to users or chats, and recall messages sent by the bot. Use when user asks about chat messages, conversation history, what was discussed in a group, wants to send a message, or wants to recall a message.
 ---
 
 # Messages Skill
 
-Retrieve chat message history, send messages, and search for chats/groups via the `lark` CLI.
+Retrieve chat message history, send messages, recall messages, and search for chats/groups via the `lark` CLI.
 
 ## 🤖 Agent Capabilities
 
@@ -376,6 +376,32 @@ lark msg resource --message-id om_xxx --file-key img_v3_xxx --type image --outpu
 - Emoji resources cannot be downloaded
 - Resources from card messages, merged messages, or forwarded messages cannot be downloaded (API error 234043)
 - The `message_id` and `file_key` must match (the file must belong to that message)
+
+## Recall Messages
+
+Recall a message sent by the bot.
+
+```bash
+# Recall a message by ID
+lark msg recall om_dc13264520392913993dd051dba21dcf
+```
+
+Output:
+```json
+{
+  "success": true,
+  "message": "Message recalled",
+  "messageId": "om_dc13264520392913993dd051dba21dcf"
+}
+```
+
+### Limitations and Requirements
+
+- **Own messages only**: The bot can only recall its own messages
+- **Time limit**: Messages must be within the configurable recall time limit (default: 24 hours)
+- **Group admin override**: In group chats where the bot is owner/admin/creator, it can recall any message within 1 year
+- **Batch messages**: Cannot recall messages sent via batch send API
+- **Still in chat**: The bot must still be in the chat where the message was sent
 
 ## Integration with Contacts
 

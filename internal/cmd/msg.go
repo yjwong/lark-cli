@@ -496,8 +496,34 @@ func init() {
 	msgSendCmd.Flags().StringVar(&msgSendLink, "link", "", "Link text (requires --url)")
 	msgSendCmd.Flags().StringVar(&msgSendURL, "url", "", "Link URL (requires --link)")
 
+	// msg recall command
+	var msgRecallCmd = &cobra.Command{
+		Use:   "recall <message-id>",
+		Short: "Recall a message sent by the bot",
+		Long: `Recall a message sent by the bot.
+
+The bot can only recall its own messages sent within the configurable time limit (default 24 hours).
+For group chats, if the bot is a group owner/admin/creator, it can recall any message within 1 year.
+
+Examples:
+  lark msg recall om_dc13264520392913993dd051dba21dcf`,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			client := api.NewClient()
+			if err := client.DeleteMessage(args[0]); err != nil {
+				output.Fatal("DELETE_FAILED", err)
+			}
+			output.JSON(map[string]interface{}{
+				"success":   true,
+				"message":   "Message recalled",
+				"messageId": args[0],
+			})
+		},
+	}
+
 	// Register subcommands
 	msgCmd.AddCommand(msgHistoryCmd)
 	msgCmd.AddCommand(msgResourceCmd)
 	msgCmd.AddCommand(msgSendCmd)
+	msgCmd.AddCommand(msgRecallCmd)
 }

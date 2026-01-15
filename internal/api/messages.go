@@ -103,3 +103,20 @@ func (c *Client) SendMessage(receiveIDType, receiveID, msgType, content string) 
 
 	return &resp, nil
 }
+
+// DeleteMessage recalls a message sent by the bot
+// messageID: the ID of the message to recall
+// Bot can only recall its own messages sent within the configurable time limit (default 24h).
+// For group chats, group admins can recall any message within 1 year.
+func (c *Client) DeleteMessage(messageID string) error {
+	path := fmt.Sprintf("/open-apis/im/v1/messages/%s", messageID)
+
+	var resp BaseResponse
+	if err := c.Delete(path, &resp); err != nil {
+		return err
+	}
+	if resp.Code != 0 {
+		return fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+	return nil
+}

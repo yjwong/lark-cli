@@ -395,6 +395,31 @@ Output:
 
 **Note:** Messages are sent as the bot/app. The bot must be added to group chats before it can send messages to them.
 
+#### Recall Message
+
+Recall a message sent by the bot.
+
+```bash
+# Recall a message by ID
+./lark msg recall om_dc13264520392913993dd051dba21dcf
+```
+
+Output:
+```json
+{
+  "success": true,
+  "message": "Message recalled",
+  "messageId": "om_dc13264520392913993dd051dba21dcf"
+}
+```
+
+**Limitations:**
+- The bot can only recall its own messages
+- Messages must have been sent within the configurable time limit (default: 24 hours)
+- For group chats, if the bot is a group owner/admin/creator, it can recall any message within 1 year
+- Cannot recall messages sent via batch send API
+- The bot must still be in the chat where the message was sent
+
 ### Documents
 
 #### List Folder Items

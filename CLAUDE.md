@@ -62,7 +62,7 @@ See `USAGE.md` for full CLI documentation. Main commands:
 - `msg history` - Get chat message history
 - `msg resource` - Download message attachments
 - `msg send` - Send messages to users or chats
-- `chat search` - Find chats and groups
+- `msg recall <message-id>` - Recall a message sent by the bot
 
 **Message Sending Features:**
 - Send text messages with line breaks (`\n` creates newlines)
