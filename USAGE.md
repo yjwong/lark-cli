@@ -768,6 +768,81 @@ Output:
 }
 ```
 
+### Minutes
+
+Access Lark Minutes meeting recordings.
+
+#### Get Minutes Metadata
+
+```bash
+./lark minutes get <minute-token>
+```
+
+The minute token is from the Minutes URL:
+- URL: `https://bytedance.larksuite.com/minutes/obcnq3b9jl72l83w4f14xxxx`
+- Token: `obcnq3b9jl72l83w4f14xxxx`
+
+Output:
+```json
+{
+  "token": "obcnq3b9jl72l83w4f14xxxx",
+  "title": "Team Sync Meeting",
+  "owner_id": "ou_612b787ccd3259fb3c816b3f678dxxxx",
+  "create_time": "2026-01-20T10:30:00+08:00",
+  "duration_seconds": 3600,
+  "duration_display": "1h 0m 0s",
+  "url": "https://bytedance.larksuite.com/minutes/obcnq3b9jl72l83w4f14xxxx"
+}
+```
+
+#### Export Transcript
+
+```bash
+# Plain text transcript
+./lark minutes transcript <minute-token>
+
+# SRT format (for subtitles)
+./lark minutes transcript <minute-token> --format srt
+
+# Include speaker names
+./lark minutes transcript <minute-token> --speaker
+
+# Include timestamps
+./lark minutes transcript <minute-token> --timestamp
+
+# Save to file
+./lark minutes transcript <minute-token> --output transcript.txt
+```
+
+Flags:
+- `--format`: Output format - `txt` (default) or `srt`
+- `--speaker`: Include speaker names
+- `--timestamp`: Include timestamps
+- `--output`: Write to file instead of JSON output
+
+Output:
+```json
+{
+  "token": "obcnq3b9jl72l83w4f14xxxx",
+  "format": "txt",
+  "content": "Full transcript text here..."
+}
+```
+
+#### Get Media Download URL
+
+```bash
+./lark minutes media <minute-token>
+```
+
+Returns a temporary download URL valid for 24 hours:
+```json
+{
+  "token": "obcnq3b9jl72l83w4f14xxxx",
+  "download_url": "https://internal-api-drive-stream.larksuite.cn/..."
+}
+```
+
 ## Input Formats
 
 ### Dates and Times

@@ -21,6 +21,7 @@ The result: AI assistants can interact with Lark using fewer tokens, leaving mor
 - **Documents** - Read documents as markdown, list folders, resolve wiki nodes, get comments
 - **Messages** - Retrieve chat history, download attachments, send messages to users and chats
 - **Mail** - Read and search emails via IMAP with local caching
+- **Minutes** - Get meeting recording metadata, export transcripts, download media
 
 ## Quick Start
 
