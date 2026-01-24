@@ -1,9 +1,17 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
+	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+
+	"github.com/yjwong/lark-cli/internal/auth"
 )
 
 // ListMessagesOptions contains optional parameters for ListMessages
@@ -76,6 +84,72 @@ func (c *Client) GetMessageResource(messageID, fileKey, resourceType string) (io
 
 	path := fmt.Sprintf("/im/v1/messages/%s/resources/%s?type=%s", messageID, fileKey, resourceType)
 	return c.DownloadWithTenantToken(path)
+}
+
+// UploadMessageImage uploads an image for message sending and returns the image key
+func (c *Client) UploadMessageImage(filePath string) (string, error) {
+	if err := auth.EnsureValidTenantToken(); err != nil {
+		return "", err
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open image: %w", err)
+	}
+	defer file.Close()
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	if err := writer.WriteField("image_type", "message"); err != nil {
+		return "", fmt.Errorf("failed to write image_type: %w", err)
+	}
+
+	part, err := writer.CreateFormFile("image", filepath.Base(filePath))
+	if err != nil {
+		return "", fmt.Errorf("failed to create image form: %w", err)
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return "", fmt.Errorf("failed to read image: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return "", fmt.Errorf("failed to finalize upload: %w", err)
+	}
+
+	url := baseURL + "/im/v1/images"
+	req, err := http.NewRequest("POST", url, &buf)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token := auth.GetTenantTokenStore().GetAccessToken()
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var uploadResp UploadImageResponse
+	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if uploadResp.Code != 0 {
+		return "", fmt.Errorf("API error %d: %s", uploadResp.Code, uploadResp.Msg)
+	}
+
+	if uploadResp.Data.ImageKey == "" {
+		return "", fmt.Errorf("API error: missing image_key")
+	}
+
+	return uploadResp.Data.ImageKey, nil
 }
 
 // SendMessage sends a message to a user or chat

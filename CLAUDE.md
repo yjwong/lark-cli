@@ -67,6 +67,7 @@ See `USAGE.md` for full CLI documentation. Main commands:
 
 **Message Sending Features:**
 - Send text messages with line breaks (`\n` creates newlines)
+- Send images with `--image` and place `{{image}}` in text to control placement
 - Mention users with `@{ou_xxx}` placeholders
 - Include links with markdown `[text](url)`
 - Send to emails, user IDs, or chat IDs

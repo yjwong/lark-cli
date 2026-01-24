@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -278,9 +279,10 @@ Examples:
 // --- msg send ---
 
 var (
-	msgSendTo       string
-	msgSendToType   string
-	msgSendText     string
+	msgSendTo     string
+	msgSendToType string
+	msgSendText   string
+	msgSendImages []string
 )
 
 var msgSendCmd = &cobra.Command{
@@ -290,6 +292,7 @@ var msgSendCmd = &cobra.Command{
 
 Message format:
 - Markdown-lite (default): Use --text with **bold**, *italic*, [text](url), and @{ou_xxx} mentions
+- Images: Use --image and place {{image}} in --text to position them
 
 Examples:
 	# Send text to user
@@ -305,13 +308,22 @@ Examples:
 	lark msg send --to oc_xxx --text "Please review @{ou_user1}"
 
 	# With link
-	lark msg send --to ou_xxx --text "Check this [Google](https://google.com)"`,
+	lark msg send --to ou_xxx --text "Check this [Google](https://google.com)"
+
+	# Text + image
+	lark msg send --to oc_xxx --text "Intro\n{{image}}\nMore details" --image ./diagram.png
+
+	# Multiple images
+	lark msg send --to oc_xxx --text "A\n{{image}}\nB\n{{image}}\nC" --image ./one.png --image ./two.png
+
+	# Image only
+	lark msg send --to oc_xxx --image ./screenshot.png`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if msgSendTo == "" {
 			output.Fatalf("VALIDATION_ERROR", "--to is required")
 		}
-		if msgSendText == "" {
-			output.Fatalf("VALIDATION_ERROR", "--text is required")
+		if msgSendText == "" && len(msgSendImages) == 0 {
+			output.Fatalf("VALIDATION_ERROR", "--text or --image is required")
 		}
 
 		// Auto-detect receive_id_type if not specified
@@ -320,15 +332,27 @@ Examples:
 			receiveIDType = detectIDType(msgSendTo)
 		}
 
+		client := api.NewClient()
+		imageKeys := make([]string, 0, len(msgSendImages))
+		for _, imagePath := range msgSendImages {
+			imageKey, err := client.UploadMessageImage(imagePath)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					output.Fatalf("FILE_ERROR", "image not found: %s", imagePath)
+				}
+				output.Fatal("API_ERROR", err)
+			}
+			imageKeys = append(imageKeys, imageKey)
+		}
+
 		// Build message content (markdown-lite post)
 		msgType := "post"
-		content, err := buildMarkdownPostContent(msgSendText)
+		content, err := buildMarkdownPostContentWithImages(msgSendText, imageKeys)
 		if err != nil {
 			output.Fatal("VALIDATION_ERROR", err)
 		}
 
 		// Send message
-		client := api.NewClient()
 		resp, err := client.SendMessage(receiveIDType, msgSendTo, msgType, content)
 		if err != nil {
 			output.Fatal("API_ERROR", err)
@@ -388,18 +412,69 @@ type postElement struct {
 	italic bool
 }
 
+const imagePlaceholder = "{{image}}"
+
 // buildMarkdownPostContent creates JSON content for markdown-lite post messages.
 func buildMarkdownPostContent(text string) (string, error) {
+	return buildMarkdownPostContentWithImages(text, nil)
+}
+
+// buildMarkdownPostContentWithImages creates JSON content with image placeholders.
+func buildMarkdownPostContentWithImages(text string, imageKeys []string) (string, error) {
 	unescapedText := unescapeString(text)
-	lines := strings.Split(unescapedText, "\n")
-	contentLines := make([][]map[string]interface{}, 0, len(lines))
+	var lines []string
+	if unescapedText != "" {
+		lines = strings.Split(unescapedText, "\n")
+	}
+	contentLines := make([][]map[string]interface{}, 0, len(lines)+len(imageKeys))
+	usedImages := 0
 
 	for _, line := range lines {
+		if strings.Contains(line, imagePlaceholder) {
+			segments := strings.Split(line, imagePlaceholder)
+			for index, segment := range segments {
+				if segment != "" {
+					elements := parseMarkdownLine(segment)
+					if len(elements) == 0 {
+						elements = append(elements, postElement{tag: "text", text: ""})
+					}
+					contentLines = append(contentLines, buildPostElements(elements))
+				}
+				if index < len(segments)-1 {
+					if usedImages >= len(imageKeys) {
+						return "", fmt.Errorf("not enough images for %s placeholders", imagePlaceholder)
+					}
+					contentLines = append(contentLines, []map[string]interface{}{
+						{
+							"tag":       "img",
+							"image_key": imageKeys[usedImages],
+						},
+					})
+					usedImages++
+				}
+			}
+			continue
+		}
+
 		elements := parseMarkdownLine(line)
 		if len(elements) == 0 {
 			elements = append(elements, postElement{tag: "text", text: ""})
 		}
 		contentLines = append(contentLines, buildPostElements(elements))
+	}
+
+	for usedImages < len(imageKeys) {
+		contentLines = append(contentLines, []map[string]interface{}{
+			{
+				"tag":       "img",
+				"image_key": imageKeys[usedImages],
+			},
+		})
+		usedImages++
+	}
+
+	if len(contentLines) == 0 {
+		return "", fmt.Errorf("message content cannot be empty")
 	}
 
 	content := map[string]interface{}{
@@ -593,7 +668,8 @@ func init() {
 	// msg send flags
 	msgSendCmd.Flags().StringVar(&msgSendTo, "to", "", "Recipient ID (user ID, open_id, email, or chat_id) (required)")
 	msgSendCmd.Flags().StringVar(&msgSendToType, "to-type", "", "Recipient ID type: open_id, user_id, email, chat_id (auto-detected if not specified)")
-	msgSendCmd.Flags().StringVar(&msgSendText, "text", "", "Message text (markdown-lite) (required)")
+	msgSendCmd.Flags().StringVar(&msgSendText, "text", "", "Message text (markdown-lite). Use {{image}} to place images")
+	msgSendCmd.Flags().StringSliceVar(&msgSendImages, "image", nil, "Image file path (repeatable)")
 
 	// Register subcommands
 	msgCmd.AddCommand(msgHistoryCmd)

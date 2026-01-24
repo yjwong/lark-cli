@@ -370,6 +370,15 @@ Send messages to users or group chats as the bot.
 
 # With link
 ./lark msg send --to ou_xxxx --text "Check this out [Our Docs](https://docs.example.com)"
+
+# Text + image
+./lark msg send --to oc_xxxx --text "Intro\n{{image}}\nMore details" --image ./diagram.png
+
+# Multiple images
+./lark msg send --to oc_xxxx --text "A\n{{image}}\nB\n{{image}}\nC" --image ./one.png --image ./two.png
+
+# Image only
+./lark msg send --to oc_xxxx --image ./screenshot.png
 ```
 
 Markdown-lite syntax supported:
@@ -378,10 +387,16 @@ Markdown-lite syntax supported:
 - `[text](url)`
 - `@{ou_xxx}` mention placeholders
 
+Image placeholder behavior:
+- Each `{{image}}` consumes the next `--image` in order
+- If there are more placeholders than images, the command fails
+- Extra images are appended after the text, each on its own line
+
 Flags:
 - `--to` (required): Recipient identifier (user ID, open_id, email, or chat_id)
 - `--to-type`: Explicitly specify ID type (`open_id`, `user_id`, `email`, `chat_id`) - auto-detected if omitted
-- `--text` (required): Message text content
+- `--text`: Message text content (markdown-lite). Use `{{image}}` to place images.
+- `--image`: Image file path (repeatable)
 
 Output:
 ```json

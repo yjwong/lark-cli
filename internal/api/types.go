@@ -261,12 +261,12 @@ type OutputError struct {
 
 // OutputAuthStatus is the auth status response for CLI
 type OutputAuthStatus struct {
-	Authenticated bool              `json:"authenticated"`
-	User          string            `json:"user,omitempty"`
-	ExpiresAt     time.Time         `json:"expires_at,omitempty"`
-	RefreshAt     time.Time         `json:"refresh_token_expires_at,omitempty"`
-	GrantedGroups []string          `json:"granted_groups,omitempty"`
-	ScopeGroups   map[string]bool   `json:"scope_groups,omitempty"`
+	Authenticated bool            `json:"authenticated"`
+	User          string          `json:"user,omitempty"`
+	ExpiresAt     time.Time       `json:"expires_at,omitempty"`
+	RefreshAt     time.Time       `json:"refresh_token_expires_at,omitempty"`
+	GrantedGroups []string        `json:"granted_groups,omitempty"`
+	ScopeGroups   map[string]bool `json:"scope_groups,omitempty"`
 }
 
 // OutputSuccess is a generic success response
@@ -1039,6 +1039,14 @@ type SendMessageRequest struct {
 	Content   string `json:"content"`  // JSON string
 }
 
+// UploadImageResponse is the response from POST /im/v1/images
+type UploadImageResponse struct {
+	BaseResponse
+	Data struct {
+		ImageKey string `json:"image_key"`
+	} `json:"data,omitempty"`
+}
+
 // SendMessageResponse is the response from POST /im/v1/messages
 type SendMessageResponse struct {
 	BaseResponse
@@ -1146,9 +1154,9 @@ type OutputMinute struct {
 	Token           string `json:"token"`
 	Title           string `json:"title"`
 	OwnerID         string `json:"owner_id"`
-	CreateTime      string `json:"create_time"`       // ISO 8601 format
-	DurationSeconds int    `json:"duration_seconds"`  // Duration in seconds
-	DurationDisplay string `json:"duration_display"`  // Human-readable duration
+	CreateTime      string `json:"create_time"`      // ISO 8601 format
+	DurationSeconds int    `json:"duration_seconds"` // Duration in seconds
+	DurationDisplay string `json:"duration_display"` // Human-readable duration
 	URL             string `json:"url"`
 }
 
@@ -1211,4 +1219,3 @@ type OutputDocSearchItem struct {
 	Title   string `json:"title"`
 	OwnerID string `json:"owner_id"`
 }
-

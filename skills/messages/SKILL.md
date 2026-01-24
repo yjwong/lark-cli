@@ -11,6 +11,7 @@ Retrieve chat message history, send messages, and search for chats/groups via th
 
 **Message Sending Features:**
 - Send markdown-lite text with bold/italic, links, and mentions
+- Send images with `--image` and place `{{image}}` in text to control placement
 - Mention users in group chats with @{open_id}
 - Include clickable links via markdown
 - Send to individual users or group chats
@@ -50,6 +51,11 @@ lark msg send --to oc_12345 --text "**Update:**\n• Task completed\n• Next: *
 **Send with links:**
 ```bash
 lark msg send --to ou_12345 --text "Check this out [Dashboard](https://example.com)"
+```
+
+**Send text + image:**
+```bash
+lark msg send --to oc_12345 --text "Intro\n{{image}}\nMore details" --image ./diagram.png
 ```
 
 **Find chats:**
@@ -150,6 +156,12 @@ lark msg send --to oc_xxxx --text "Please review @{ou_user1} and @{ou_user2}"
 # With link
 lark msg send --to ou_xxxx --text "Check this out [Our Docs](https://docs.example.com)"
 
+# Text + image
+lark msg send --to oc_xxxx --text "Intro\n{{image}}\nMore details" --image ./diagram.png
+
+# Multiple images
+lark msg send --to oc_xxxx --text "A\n{{image}}\nB\n{{image}}\nC" --image ./one.png --image ./two.png
+
 # Combined features
 lark msg send --to oc_xxxx \
   --text "**Project milestone reached!** See [details](https://project.example.com) @{ou_user1} @{ou_user2}"
@@ -161,7 +173,13 @@ lark msg send --to user@example.com --to-type email --text "Hello"
 Available flags:
 - `--to` (required): Recipient identifier (user ID, open_id, email, or chat_id)
 - `--to-type`: Explicitly specify ID type (`open_id`, `user_id`, `email`, `chat_id`) - auto-detected if omitted
-- `--text` (required): Message text content
+- `--text`: Message text content (markdown-lite). Use `{{image}}` to place images.
+- `--image`: Image file path (repeatable)
+
+Image placeholder behavior:
+- Each `{{image}}` consumes the next `--image` in order
+- If there are more placeholders than images, the command fails
+- Extra images are appended after the text, each on its own line
 
 Output:
 ```json
@@ -188,6 +206,7 @@ Output:
 - Use `\t` for indentation: `--text "•\tItem 1\n•\tItem 2"`
 - Use `\"` for quotes: `--text "\"Important:\" message"`
 - Use `\\` for literal backslash: `--text "Path: C:\\\\folder\\\\file"`
+- Place images with `{{image}}`: `--text "Intro\n{{image}}\nMore" --image ./one.png`
 - Use `**bold**` and `*italic*` for emphasis
 - Use `[text](url)` for links
 - Use `@{ou_xxx}` to mention users
