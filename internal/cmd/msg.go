@@ -720,12 +720,42 @@ Examples:
 			"GeneralSun",
 			"GeneralMoonRest",
 		}
+		customEmojiEntries := []struct {
+			ID    string
+			Label string
+		}{
+			{ID: "7405453485858095136", Label: "ez-pepe"},
+			{ID: "7405453485858111520", Label: "pepe-laugh"},
+			{ID: "7405453485858127904", Label: "pepe-happy-cry"},
+			{ID: "7405453485858144288", Label: "pepe-hands"},
+			{ID: "7405453485858160672", Label: "pepe-ga"},
+			{ID: "7405453485858177056", Label: "pepe-clap"},
+			{ID: "7405453485858193440", Label: "pepe-thinking"},
+			{ID: "7405453485858209824", Label: "pepe-tear"},
+			{ID: "7405453485858226208", Label: "pepe-stretch-eyes"},
+			{ID: "7405453485858242592", Label: "pepe-staring"},
+			{ID: "7405453485858258976", Label: "pepe-skull"},
+			{ID: "7405453485858275360", Label: "pepe-peaceful"},
+			{ID: "7405454254317748255", Label: "pepe-heartbroken"},
+			{ID: "7405454254317764639", Label: "pepe-excited"},
+			{ID: "7405454254317781023", Label: "pepe-what"},
+			{ID: "7405454254317797407", Label: "pepe-shouting"},
+			{ID: "7405454254317813791", Label: "pepe-notsure"},
+			{ID: "7405454254317830175", Label: "pepe-mm-yeah"},
+			{ID: "7405454254317846559", Label: "pepe-happyclap"},
+		}
+		customEmojis := make(map[string]string, len(customEmojiEntries))
+		for _, entry := range customEmojiEntries {
+			emojis = append(emojis, entry.ID)
+			customEmojis[entry.ID] = entry.Label
+		}
 		output.JSON(map[string]interface{}{
-			"source":   "im-v1/message-reaction/emojis-introduce",
-			"url":      "https://open.larksuite.com/document/server-docs/im-v1/message-reaction/emojis-introduce",
-			"examples": []string{"SMILE", "LAUGH", "THUMBSUP", "CLAP", "OK", "HEART"},
-			"count":    len(emojis),
-			"emojis":   emojis,
+			"source":        "im-v1/message-reaction/emojis-introduce",
+			"url":           "https://open.larksuite.com/document/server-docs/im-v1/message-reaction/emojis-introduce",
+			"examples":      []string{"SMILE", "LAUGH", "THUMBSUP", "CLAP", "OK", "HEART"},
+			"count":         len(emojis),
+			"emojis":        emojis,
+			"custom_emojis": customEmojis,
 		})
 	},
 }
