@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yjwong/lark-cli/internal/api"
+	"github.com/yjwong/lark-cli/internal/config"
 	"github.com/yjwong/lark-cli/internal/output"
 )
 
@@ -720,12 +721,17 @@ Examples:
 			"GeneralSun",
 			"GeneralMoonRest",
 		}
+		customEmojis := config.GetCustomEmojis()
+		for emojiID := range customEmojis {
+			emojis = append(emojis, emojiID)
+		}
 		output.JSON(map[string]interface{}{
-			"source":   "im-v1/message-reaction/emojis-introduce",
-			"url":      "https://open.larksuite.com/document/server-docs/im-v1/message-reaction/emojis-introduce",
-			"examples": []string{"SMILE", "LAUGH", "THUMBSUP", "CLAP", "OK", "HEART"},
-			"count":    len(emojis),
-			"emojis":   emojis,
+			"source":        "im-v1/message-reaction/emojis-introduce",
+			"url":           "https://open.larksuite.com/document/server-docs/im-v1/message-reaction/emojis-introduce",
+			"examples":      []string{"SMILE", "LAUGH", "THUMBSUP", "CLAP", "OK", "HEART"},
+			"count":         len(emojis),
+			"emojis":        emojis,
+			"custom_emojis": customEmojis,
 		})
 	},
 }

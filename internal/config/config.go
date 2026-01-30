@@ -18,6 +18,7 @@ type Config struct {
 	OAuth struct {
 		RedirectPort int `mapstructure:"redirect_port"`
 	} `mapstructure:"oauth"`
+	CustomEmojis map[string]string `mapstructure:"custom_emojis"`
 }
 
 var (
@@ -120,4 +121,9 @@ func TokensFilePath() string {
 // TenantTokensFilePath returns the path to the tenant tokens file
 func TenantTokensFilePath() string {
 	return filepath.Join(cfgDir, "tenant_tokens.json")
+}
+
+// GetCustomEmojis returns the custom emoji mappings
+func GetCustomEmojis() map[string]string {
+	return viper.GetStringMapString("custom_emojis")
 }
