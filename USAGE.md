@@ -451,6 +451,23 @@ Show the official emoji catalog reference and common examples.
 ./lark msg react emojis
 ```
 
+#### Custom Emojis
+
+Custom emojis can be configured in `.lark/config.yaml` to add organization-specific emojis to the catalog:
+
+```yaml
+custom_emojis:
+  "7405453485858095136": "ez-pepe"
+  "7405453485858111520": "pepe-laugh"
+```
+
+Use custom emoji IDs when adding reactions:
+```bash
+./lark msg react --message-id om_xxx --reaction 7405453485858095136
+```
+
+Custom emojis appear in the `lark msg react emojis` output under `custom_emojis`.
+
 #### List Message Reactions
 
 List reactions for a message.

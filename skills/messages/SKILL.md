@@ -1,66 +1,29 @@
 ---
 name: messages
-description: Retrieve chat message history and send messages in Lark - get messages from group chats, private chats, threads, and send messages to users or chats. Use when user asks about chat messages, conversation history, what was discussed in a group, or wants to send a message.
+description: Retrieve chat message history, send messages, and manage reactions in Lark - get messages from group chats, private chats, threads, send messages to users or chats, and add/list/remove reactions. Use when user asks about chat messages, conversation history, what was discussed in a group, or wants to send a message or react.
 ---
 
 # Messages Skill
 
-Retrieve chat message history, send messages, and search for chats/groups via the `lark` CLI.
+Retrieve chat message history, send messages, manage reactions, and search for chats/groups via the `lark` CLI.
 
-## 🤖 Agent Capabilities
+## 🤖 Capabilities and Use Cases
 
-**Message Sending Features:**
-- Send markdown-lite text with bold/italic, links, and mentions
-- Send images with `--image` and place `{{image}}` in text to control placement
-- Mention users in group chats with @{open_id}
-- Include clickable links via markdown
-- Send to individual users or group chats
-- Auto-detect recipient types (email, user ID, chat ID)
-- Support for escape sequences (\n, \t, \", \\)
-- Recall/delete previously sent messages
-
-**Use Cases:**
-- Send notifications and updates
-- Share links and resources
-- Mention team members in group discussions
-- Communicate with users via email or direct message
-- Format messages with proper line breaks and structure
-- Retract incorrect or outdated information
-- Remove accidental messages sent to wrong chat
-- Clean up temporary notifications or alerts
-- Delete automated messages after they're no longer relevant
-
-**Agent-Friendly Features:**
-- Explicit flag-based interface (no ambiguous parsing)
-- Clear error messages and validation
-- Comprehensive help text with examples
-- Consistent JSON output for easy parsing
+- Send markdown-lite messages with links and mentions
+- Send images with `--image` and `{{image}}` placement
+- Message recall/delete for cleanup
+- Add/list/remove emoji reactions
+- Browse emoji catalog reference
+- Read chat history (chat or thread)
+- Download message resources (images/files/audio/video)
+- Find chats by name or member
+- Use clear, flag-based CLI with consistent JSON output
 
 ## 🚀 Quick Reference
 
-**Send a simple message:**
+**Send message:**
 ```bash
 lark msg send --to user@example.com --text "Hello!"
-```
-
-**Send with formatting:**
-```bash
-lark msg send --to oc_12345 --text "**Update:**\n• Task completed\n• Next: *Review* @{ou_user1}"
-```
-
-**Send with links:**
-```bash
-lark msg send --to ou_12345 --text "Check this out [Dashboard](https://example.com)"
-```
-
-**Send text + image:**
-```bash
-lark msg send --to oc_12345 --text "Intro\n{{image}}\nMore details" --image ./diagram.png
-```
-
-**Find chats:**
-```bash
-lark chat search "project team"
 ```
 
 **Read messages:**
@@ -68,14 +31,21 @@ lark chat search "project team"
 lark msg history --chat-id oc_12345 --limit 10
 ```
 
-**Recall messages:**
+**Find chats:**
 ```bash
-# Send and immediately recall a temporary message
-MESSAGE_ID=$(lark msg send --to user@example.com --text "Temp message" | jq -r '.message_id')
-lark msg recall $MESSAGE_ID
+lark chat search "project team"
+```
 
-# Recall a specific message by ID
-lark msg recall om_123456789abcdef
+**React / list / remove reaction:**
+```bash
+lark msg react --message-id om_123456789abcdef --reaction SMILE
+lark msg react list --message-id om_123456789abcdef
+lark msg react remove --message-id om_123456789abcdef --reaction-id ZCaCIjUBVVWSrm5L-3ZTw...
+```
+
+**Download resource:**
+```bash
+lark msg resource --message-id om_xxx --file-key img_v3_xxx --type image --output ./image.png
 ```
 
 ## Running Commands
@@ -92,82 +62,24 @@ LARK_CONFIG_DIR=/path/to/.lark lark msg <command>
 ## Commands Reference
 
 ### Search for Chats/Groups
+
 ```bash
-# Search for chats by name
-lark chat search "project"
-
-# Search with Chinese characters
-lark chat search "团队"
-
-# List all visible chats (no query)
-lark chat search
-
-# Limit results
-lark chat search "team" --limit 10
+lark chat search "project" --limit 10
 ```
 
 Available flags:
 - `--limit`: Maximum number of chats to retrieve (0 = no limit)
 
-Output:
-```json
-{
-  "chats": [
-    {
-      "chat_id": "oc_d8e62a81cd188199ab994080f1e0804f",
-      "name": "project-team",
-      "description": "Project discussion group",
-      "owner_id": "ou_46538f635a314d611cdd028c9c293d21",
-      "external": false,
-      "chat_status": "normal"
-    }
-  ],
-  "count": 1,
-  "query": "project"
-}
-```
-
-The search supports:
-- Group name matching (including internationalized names)
-- Group member name matching
-- Multiple languages
-- Fuzzy search (pinyin, prefix, etc.)
+Output fields include:
+- `chats[]` with `chat_id`, `name`, `description`, `owner_id`, `external`, `chat_status`
+- `count`, `query`
 
 ### Send Messages
 
 Send messages to users or group chats as the bot.
 
 ```bash
-# Send simple text to user
 lark msg send --to ou_xxxx --text "Hello!"
-
-# Send to group chat
-lark msg send --to oc_xxxx --text "Meeting starting soon"
-
-# Text with line breaks (\n is interpreted as newline)
-lark msg send --to ou_xxxx --text "Update:\nPhase 1 complete\nPhase 2 starting"
-
-# Supported escape sequences: \n (newline), \t (tab), \\ (backslash), \" (quote)
-lark msg send --to ou_xxxx --text "Tab:\tindented\nNew line"
-
-# Mention users in group chat
-lark msg send --to oc_xxxx --text "Please review @{ou_user1} and @{ou_user2}"
-
-# With link
-lark msg send --to ou_xxxx --text "Check this out [Our Docs](https://docs.example.com)"
-
-# Text + image
-lark msg send --to oc_xxxx --text "Intro\n{{image}}\nMore details" --image ./diagram.png
-
-# Multiple images
-lark msg send --to oc_xxxx --text "A\n{{image}}\nB\n{{image}}\nC" --image ./one.png --image ./two.png
-
-# Combined features
-lark msg send --to oc_xxxx \
-  --text "**Project milestone reached!** See [details](https://project.example.com) @{ou_user1} @{ou_user2}"
-
-# Using explicit ID type
-lark msg send --to user@example.com --to-type email --text "Hello"
 ```
 
 Available flags:
@@ -175,11 +87,6 @@ Available flags:
 - `--to-type`: Explicitly specify ID type (`open_id`, `user_id`, `email`, `chat_id`) - auto-detected if omitted
 - `--text`: Message text content (markdown-lite). Use `{{image}}` to place images.
 - `--image`: Image file path (repeatable)
-
-Image placeholder behavior:
-- Each `{{image}}` consumes the next `--image` in order
-- If there are more placeholders than images, the command fails
-- Extra images are appended after the text, each on its own line
 
 Output:
 ```json
@@ -191,68 +98,10 @@ Output:
 }
 ```
 
-## 🔍 Agent Use Cases
-
-**When to use message sending:**
-- Notify users about task completion or status updates
-- Share links to documents, dashboards, or resources
-- Mention team members in group discussions
-- Send automated alerts or reminders
-- Communicate with users via email or direct message
-- Format messages with proper structure and line breaks
-
-**Message formatting tips for agents:**
-- Use `\n` for line breaks: `--text "Line 1\nLine 2"`
-- Use `\t` for indentation: `--text "•\tItem 1\n•\tItem 2"`
-- Use `\"` for quotes: `--text "\"Important:\" message"`
-- Use `\\` for literal backslash: `--text "Path: C:\\\\folder\\\\file"`
-- Place images with `{{image}}`: `--text "Intro\n{{image}}\nMore" --image ./one.png`
-- Use `**bold**` and `*italic*` for emphasis
-- Use `[text](url)` for links
-- Use `@{ou_xxx}` to mention users
-
-**Recipient discovery:**
-- Use `lark chat search "team"` to find group chats
-- Use `lark contact get <user_id>` to verify user information
-- Use email addresses directly (auto-detected)
-- Use open_id format for reliable user targeting
-
-**Recipient ID Types:**
-- `open_id`: User open ID (starts with `ou_`)
-- `user_id`: User ID (numeric)
-- `email`: User email address
-- `chat_id`: Group chat ID (starts with `oc_`)
-
-The CLI auto-detects the ID type based on format, but you can override with `--to-type`.
-
-**Message Types:**
-- **Markdown-lite post**: Default for `msg send` (supports bold/italic/links/mentions)
-- **Recall**: Delete previously sent messages using message ID
-
-**Notes:**
-- Messages are sent as the bot/app
-- The bot must be added to group chats before it can send messages
-- Requires `im:message` or `im:message:send_as_bot` permission scope
-
 ### Get Chat History
+
 ```bash
-# Get messages from a group chat
-lark msg history --chat-id oc_xxxxx
-
-# Get messages with limit
-lark msg history --chat-id oc_xxxxx --limit 50
-
-# Get messages in a time range (Unix timestamp)
-lark msg history --chat-id oc_xxxxx --start 1704067200 --end 1704153600
-
-# Get messages in a time range (ISO 8601)
-lark msg history --chat-id oc_xxxxx --start 2024-01-15 --end 2024-01-16
-
-# Sort by newest first
-lark msg history --chat-id oc_xxxxx --sort desc
-
-# Get thread messages
-lark msg history --chat-id thread_xxxxx --type thread
+lark msg history --chat-id oc_xxxxx --limit 50 --sort desc
 ```
 
 Available flags:
@@ -263,51 +112,128 @@ Available flags:
 - `--sort`: Sort order - `asc` (default) or `desc`
 - `--limit`: Maximum number of messages (0 = no limit)
 
+Output fields include:
+- `messages[]` with `message_id`, `msg_type`, `content`, `sender`, `create_time`, `mentions`, `is_reply`, `thread_id`, `deleted`
+- `count`, `chat_id`
+
+### React to Message
+
+Add a reaction to a message as the bot.
+
+```bash
+lark msg react --message-id om_dc13264520392913993dd051dba21dcf --reaction SMILE
+```
+
+Available flags:
+- `--message-id` (required): Message ID to react to
+- `--reaction` (required): Reaction ID or emoji name
+- `--type`: Reaction type (default: `emoji`)
+
 Output:
 ```json
 {
-  "messages": [
-    {
-      "message_id": "om_dc13264520392913993dd051dba21dcf",
-      "msg_type": "text",
-      "content": "{\"text\":\"Hello world\"}",
-      "sender": {
-        "id": "ou_155184d1e73cbfb8973e5a9e698e74f2",
-        "type": "user"
-      },
-      "create_time": "2024-01-15T09:00:00+08:00",
-      "mentions": [],
-      "is_reply": false,
-      "thread_id": "",
-      "deleted": false
-    }
-  ],
-  "count": 1,
-  "chat_id": "oc_xxxxx"
+  "success": true,
+  "message_id": "om_dc13264520392913993dd051dba21dcf",
+  "reaction_type": "emoji",
+  "reaction_id": "ZCaCIjUBVVWSrm5L-3ZTw...",
+  "emoji_type": "SMILE"
 }
 ```
 
-## Reading Thread Replies
+Notes:
+- Reactions are added as the bot/app. The bot must be in the chat to react.
+- Emoji types must match the Lark emoji catalog (e.g., `SMILE`, `LAUGH`).
 
-When a message has a `thread_id` field, it means the message is part of a thread (or is the root of a thread with replies). To fetch all replies in that thread:
+### Emoji Catalog Reference
 
-1. Get chat history and note the `thread_id` from any message that has one
-2. Use that `thread_id` with `--type thread` to get all messages in the thread
-
-Example workflow:
 ```bash
-# Get recent messages from a chat
-lark msg history --chat-id oc_xxxxx --limit 10 --sort desc
-
-# If a message has thread_id: "omt_1a3b99f9d2cfd982", fetch the thread
-lark msg history --chat-id omt_1a3b99f9d2cfd982 --type thread
+lark msg react emojis
 ```
 
-Thread messages will have `is_reply: true` for replies (the root message has `is_reply: false`).
+Use this command to list the supported emoji types for reactions.
+
+**Custom Emojis:** Organization-specific custom emojis can be configured in `.lark/config.yaml`:
+
+```yaml
+custom_emojis:
+  "7405453485858095136": "ez-pepe"
+```
+
+Custom emoji IDs will appear in the `custom_emojis` field of the output.
+
+### List Message Reactions
+
+```bash
+lark msg react list --message-id om_dc13264520392913993dd051dba21dcf --reaction SMILE --limit 50
+```
+
+Available flags:
+- `--message-id` (required): Message ID to list reactions for
+- `--reaction`: Emoji type filter (e.g., `SMILE`)
+- `--limit`: Maximum number of reactions to retrieve (0 = no limit)
+
+Output fields include:
+- `message_id`, `reactions[]`, `count`
+
+### Remove Message Reaction
+
+```bash
+lark msg react remove --message-id om_dc13264520392913993dd051dba21dcf --reaction-id ZCaCIjUBVVWSrm5L-3ZTw...
+```
+
+Available flags:
+- `--message-id` (required): Message ID to remove reaction from
+- `--reaction-id` (required): Reaction ID to remove
+
+Output fields include:
+- `success`, `message_id`, `reaction_type`, `reaction_id`, `emoji_type`
+
+### Recall Messages
+
+Recall/delete previously sent messages from chats.
+
+```bash
+lark msg recall om_dc13264520392913993dd051dba21dcf
+```
+
+Output fields include:
+- `success`, `message_id`
+
+### Downloading Resource Files
+
+Download images, files, audio, and video from messages using `msg resource`:
+
+```bash
+lark msg resource --message-id om_xxx --file-key img_v3_xxx --type image --output ./image.png
+lark msg resource --message-id om_xxx --file-key file_v2_xxx --type file --output ./document.pdf
+```
+
+Available flags:
+- `--message-id` (required): Message ID containing the resource
+- `--file-key` (required): Resource key from message content (`image_key` or `file_key`)
+- `--type` (required): `image` for images, `file` for files/audio/video
+- `--output` (required): Output file path
+
+Output fields include:
+- `success`, `message_id`, `file_key`, `output_path`, `content_type`, `bytes_written`
+
+Limitations:
+- Maximum file size: 100MB
+- Emoji resources cannot be downloaded
+- Resources from card, merged, or forwarded messages are not supported
+- The `message_id` and `file_key` must match
+
+## Tips
+
+- Use `\n` for line breaks and `\t` for indentation in `--text`
+- Use `@{ou_xxx}` to mention users in group chats
+- Use `{{image}}` in text to place images in order
+- Chat IDs start with `oc_`; thread IDs start with `thread_` or `omt_`
+- Use `lark msg react list` to discover `reaction_id` for removal
+- The CLI auto-detects recipient type; override with `--to-type` if needed
 
 ## Message Types
 
-The `msg_type` field indicates the message format:
 - `text` - Plain text message
 - `post` - Rich text post
 - `image` - Image
@@ -319,111 +245,20 @@ The `msg_type` field indicates the message format:
 - `share_chat` - Shared chat
 - `share_user` - Shared user contact
 
-## Parsing Message Content
+## Reading Thread Replies
 
-The `content` field is a JSON string. Parse it based on `msg_type`:
-
-### Text Messages
-```json
-{"text": "Hello world"}
-```
-
-### Post Messages (Rich Text)
-```json
-{
-  "title": "Post Title",
-  "content": [[{"tag": "text", "text": "paragraph text"}]]
-}
-```
-
-### Image Messages
-```json
-{"image_key": "img_xxxx"}
-```
-
-### File Messages
-```json
-{"file_key": "file_xxxx", "file_name": "document.pdf"}
-```
-
-### Audio Messages
-```json
-{"file_key": "file_xxxx", "duration": 5000}
-```
-
-### Media (Video) Messages
-```json
-{"file_key": "file_xxxx", "image_key": "img_xxxx", "file_name": "video.mp4", "duration": 10000}
-```
-
-## Downloading Resource Files
-
-Download images, files, audio, and video from messages using `msg resource`:
+If a message has a `thread_id`, it is part of a thread (or is the root). To fetch replies:
 
 ```bash
-# Download an image
-lark msg resource --message-id om_xxx --file-key img_v3_xxx --type image --output ./image.png
-
-# Download a file, audio, or video
-lark msg resource --message-id om_xxx --file-key file_v2_xxx --type file --output ./document.pdf
+lark msg history --chat-id oc_xxxxx --limit 10 --sort desc
+lark msg history --chat-id omt_1a3b99f9d2cfd982 --type thread
 ```
 
-Available flags:
-- `--message-id` (required): Message ID containing the resource
-- `--file-key` (required): Resource key from message content (`image_key` or `file_key`)
-- `--type` (required): `image` for images, `file` for files/audio/video
-- `--output` (required): Output file path
-
-Output:
-```json
-{
-  "success": true,
-  "message_id": "om_xxx",
-  "file_key": "img_v3_xxx",
-  "output_path": "./image.png",
-  "content_type": "image/png",
-  "bytes_written": 62419
-}
-```
-
-### Workflow: View Images from Chat
-
-1. Get message history to find image messages:
-```bash
-lark msg history --chat-id oc_xxxxx --limit 20
-```
-
-2. Find messages with `msg_type: "image"` and parse the content to get `image_key`
-
-3. Download the image:
-```bash
-lark msg resource --message-id om_xxx --file-key img_v3_xxx --type image --output /tmp/image.png
-```
-
-4. View the image using the Read tool on the downloaded file
-
-### Limitations
-
-- Maximum file size: 100MB
-- Emoji resources cannot be downloaded
-- Resources from card messages, merged messages, or forwarded messages cannot be downloaded (API error 234043)
-- The `message_id` and `file_key` must match (the file must belong to that message)
-
-## Integration with Contacts
-
-Enrich sender information by looking up user details:
-
-```bash
-# Get message history
-lark msg history --chat-id oc_xxxxx --limit 10
-
-# Look up sender details
-lark contact get ou_sender_id
-```
+Thread messages will have `is_reply: true` for replies (root message has `is_reply: false`).
 
 ## Output Format
 
-All commands output JSON. Format appropriately when presenting to user.
+All commands output JSON.
 
 ## Error Handling
 
@@ -438,13 +273,13 @@ Errors return JSON:
 
 Common error codes:
 - `AUTH_ERROR` - Need to run `lark auth login`
-- `SCOPE_ERROR` - Missing messages permissions. Run `lark auth login --add --scopes messages`
+- `SCOPE_ERROR` - Missing messages permissions
 - `VALIDATION_ERROR` - Missing required fields (e.g., chat-id)
 - `API_ERROR` - Lark API issue (e.g., bot not in group, missing permissions)
 
 ## Required Permissions
 
-This skill requires the `messages` scope group. If you see a `SCOPE_ERROR`, the user needs to add messages permissions:
+This skill requires the `messages` scope group. If you see a `SCOPE_ERROR`, add permissions:
 
 ```bash
 lark auth login --add --scopes messages
@@ -459,72 +294,20 @@ Additional requirements:
 
 **For reading messages:**
 - The bot must be in the group chat
-- For group chat messages, the app needs the "Read all messages in associated group chat" permission scope
-- Private chat messages only require `im:message:readonly` scope
+- Group chat reads require the "Read all messages in associated group chat" permission
+- Private chat reads require `im:message:readonly`
 
 **For sending messages:**
-- Requires `im:message` or `im:message:send_as_bot` permission scope
+- Requires `im:message` or `im:message:send_as_bot`
 - The bot must be added to group chats before it can send messages to them
-- Can send to users directly without being in a private chat first
+
+**For reactions:**
+- List reactions requires `im:message.reactions:read`
+- Add/remove reactions requires `im:message.reactions:write_only`
 
 ## Notes
 
-- Chat IDs typically start with `oc_` (for chats) or `thread_` (for threads)
-- Time filters don't work for thread container type
+- Messages are sent as the bot/app
 - Messages are sorted by creation time ascending by default
-- The `deleted` field indicates if a message was recalled
-
-### Recall Messages
-
-Recall/delete previously sent messages from chats.
-
-```bash
-# Recall a message by ID
-lark msg recall om_dc13264520392913993dd051dba21dcf
-
-# Send and immediately recall workflow
-MESSAGE_ID=$(lark msg send --to user@example.com --text "Temporary message" | jq -r '.message_id')
-lark msg recall $MESSAGE_ID
-```
-
-Output:
-```json
-{
-  "success": true,
-  "message_id": "om_dc13264520392913993dd051dba21dcf"
-}
-```
-
-#### Recall Time Limits
-
-- **Regular users**: Can recall their own messages within 24 hours
-- **Group owners/admins**: Can recall any member's messages within 1 year
-- **Bots**: Can recall their own messages within 24 hours
-
-#### Error Handling
-
-Recall-specific error codes:
-- `API_ERROR` with message like "message not found or recall time limit exceeded"
-- `AUTH_ERROR` - Need to run `lark auth login` with proper permissions
-- `VALIDATION_ERROR` - Invalid message ID format
-
-#### Use Cases
-
-**When to use message recall:**
-- Retract incorrect or outdated information
-- Remove accidental messages sent to wrong chat
-- Delete automated messages after they're no longer relevant
-- Clean up temporary notifications or alerts
-- Remove sensitive information that was shared accidentally
-
-**Recall workflow tips:**
-- Use chat search to find the message ID if needed
-- Combine with send command for temporary notifications: `lark msg send ... && sleep 5 && lark msg recall $MESSAGE_ID`
-- Test recall timing - messages older than 24 hours (or 1 year for admins) will fail
-- Verify success by checking chat history after recall
-
-**Notes:**
+- Time filters do not work for thread container type
 - Message IDs typically start with `om_`
-- Recall is permanent - the message will show as "recalled" to all chat members
-- Group owners have extended recall privileges (1 year vs 24 hours)
-- Requires `im:message` or `im:message:send_as_bot` permission scope

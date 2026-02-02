@@ -13,3 +13,10 @@ defaults:
 # OAuth settings
 oauth:
   redirect_port: 9999
+
+# Custom emoji mappings (optional)
+# Map custom emoji IDs to human-readable labels for reactions
+# Find custom emoji IDs via: lark msg react emojis
+# custom_emojis:
+#   "7405453485858095136": "ez-pepe"
+#   "7405453485858111520": "pepe-laugh"
