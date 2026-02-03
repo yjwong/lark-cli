@@ -51,11 +51,17 @@ var Groups = map[string]ScopeGroup{
 		Scopes:      []string{"minutes:minutes:readonly", "minutes:minute:download"},
 		Commands:    []string{"minutes"},
 	},
+	"tasks": {
+		Name:        "tasks",
+		Description: "Lark Tasks management",
+		Scopes:      []string{"task:task:read"},
+		Commands:    []string{"task"},
+	},
 }
 
 // AllGroupNames returns all scope group names in a consistent order
 func AllGroupNames() []string {
-	return []string{"calendar", "contacts", "documents", "messages", "mail", "minutes"}
+	return []string{"calendar", "contacts", "documents", "messages", "mail", "minutes", "tasks"}
 }
 
 // GetScopesForGroups returns the combined scopes for the given group names
