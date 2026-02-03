@@ -558,6 +558,68 @@ Examples:
 	},
 }
 
+// --- doc download ---
+
+var docDownloadCmd = &cobra.Command{
+	Use:   "download <file_token>",
+	Short: "Download a file from Lark Drive",
+	Long: `Download a file from Lark Drive.
+
+The file_token is obtained from 'doc list' or 'doc search' output.
+Only files with type "file" can be downloaded (not docs, sheets, etc).
+
+You must specify an output filename with -o/--output.
+
+Examples:
+  lark doc download FG3obxWuaoftXIx0CvxlQAabcef -o report.pdf
+  lark doc download FG3obxWuaoftXIx0CvxlQAabcef -o ~/Downloads/report.pdf`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		fileToken := args[0]
+		outputPath, _ := cmd.Flags().GetString("output")
+
+		if outputPath == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--output/-o flag is required"))
+		}
+
+		client := api.NewClient()
+
+		// Download the file
+		reader, contentType, err := client.DownloadDriveFile(fileToken)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+		defer reader.Close()
+
+		// Create output file
+		file, err := os.Create(outputPath)
+		if err != nil {
+			output.Fatal("FILE_ERROR", err)
+		}
+		defer file.Close()
+
+		// Copy file data
+		written, err := io.Copy(file, reader)
+		if err != nil {
+			output.Fatal("IO_ERROR", err)
+		}
+
+		// Output result as JSON
+		result := struct {
+			FileToken   string `json:"file_token"`
+			Filename    string `json:"filename"`
+			ContentType string `json:"content_type"`
+			Size        int64  `json:"size"`
+		}{
+			FileToken:   fileToken,
+			Filename:    outputPath,
+			ContentType: contentType,
+			Size:        written,
+		}
+		output.JSON(result)
+	},
+}
+
 func init() {
 	// Register subcommands
 	docCmd.AddCommand(docGetCmd)
@@ -569,6 +631,7 @@ func init() {
 	docCmd.AddCommand(docSearchCmd)
 	docCmd.AddCommand(docImageCmd)
 	docCmd.AddCommand(docWikiSearchCmd)
+	docCmd.AddCommand(docDownloadCmd)
 
 	// Flags for doc wiki-search
 	docWikiSearchCmd.Flags().String("space-id", "", "Filter to specific wiki space ID")
@@ -582,4 +645,7 @@ func init() {
 	// Flags for doc image
 	docImageCmd.Flags().StringP("output", "o", "", "Output file path (default: stdout)")
 	docImageCmd.Flags().StringP("doc", "d", "", "Document ID (required for authentication)")
+
+	// Flags for doc download
+	docDownloadCmd.Flags().StringP("output", "o", "", "Output file path (default: original filename)")
 }
