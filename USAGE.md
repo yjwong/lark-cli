@@ -381,6 +381,12 @@ Send messages to users or group chats as the bot.
 
 # Image only
 ./lark msg send --to oc_xxxx --image ./screenshot.png
+
+# Reply in thread
+./lark msg send --to oc_xxxx --parent-id om_xxxx --msg-type text --text "Replying here"
+
+# Reply inside an existing thread
+./lark msg send --to oc_xxxx --root-id om_root --parent-id om_parent --text "Follow-up"
 ```
 
 Markdown-lite syntax supported:
@@ -399,6 +405,9 @@ Flags:
 - `--to-type`: Explicitly specify ID type (`open_id`, `user_id`, `email`, `chat_id`) - auto-detected if omitted
 - `--text`: Message text content (markdown-lite). Use `{{image}}` to place images.
 - `--image`: Image file path (repeatable)
+- `--msg-type`: Message type: `post` (default) or `text`
+- `--parent-id`: Parent message ID to reply in thread (optional)
+- `--root-id`: Root message ID for thread replies (optional)
 
 Output:
 ```json
@@ -411,6 +420,7 @@ Output:
 ```
 
 **Note:** Messages are sent as the bot/app. The bot must be added to group chats before it can send messages to them.
+Replies sent with `--parent-id` are always created in a thread.
 
 #### React to Message
 

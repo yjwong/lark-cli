@@ -280,10 +280,13 @@ Examples:
 // --- msg send ---
 
 var (
-	msgSendTo     string
-	msgSendToType string
-	msgSendText   string
-	msgSendImages []string
+	msgSendTo       string
+	msgSendToType   string
+	msgSendText     string
+	msgSendImages   []string
+	msgSendRootID   string
+	msgSendParentID string
+	msgSendMsgType  string
 )
 
 var msgSendCmd = &cobra.Command{
@@ -294,6 +297,7 @@ var msgSendCmd = &cobra.Command{
 Message format:
 - Markdown-lite (default): Use --text with **bold**, *italic*, [text](url), and @{ou_xxx} mentions
 - Images: Use --image and place {{image}} in --text to position them
+- Message type: post (default) or text (plain)
 
 Examples:
 	# Send text to user
@@ -318,13 +322,31 @@ Examples:
 	lark msg send --to oc_xxx --text "A\n{{image}}\nB\n{{image}}\nC" --image ./one.png --image ./two.png
 
 	# Image only
-	lark msg send --to oc_xxx --image ./screenshot.png`,
+	lark msg send --to oc_xxx --image ./screenshot.png
+
+	# Reply in thread
+	lark msg send --to oc_xxx --parent-id om_xxx --text "Replying here"
+
+	# Reply inside an existing thread
+	lark msg send --to oc_xxx --root-id om_root --parent-id om_parent --text "Follow-up"`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if msgSendTo == "" {
 			output.Fatalf("VALIDATION_ERROR", "--to is required")
 		}
 		if msgSendText == "" && len(msgSendImages) == 0 {
 			output.Fatalf("VALIDATION_ERROR", "--text or --image is required")
+		}
+		if msgSendMsgType != "post" && msgSendMsgType != "text" {
+			output.Fatalf("VALIDATION_ERROR", "--msg-type must be 'post' or 'text'")
+		}
+		if msgSendMsgType == "text" && len(msgSendImages) > 0 {
+			output.Fatalf("VALIDATION_ERROR", "--image is only supported with --msg-type post")
+		}
+		if msgSendMsgType == "text" && msgSendText == "" {
+			output.Fatalf("VALIDATION_ERROR", "--text is required with --msg-type text")
+		}
+		if msgSendRootID != "" && msgSendParentID == "" {
+			output.Fatalf("VALIDATION_ERROR", "--parent-id is required when --root-id is set")
 		}
 
 		// Auto-detect receive_id_type if not specified
@@ -346,15 +368,29 @@ Examples:
 			imageKeys = append(imageKeys, imageKey)
 		}
 
-		// Build message content (markdown-lite post)
-		msgType := "post"
-		content, err := buildMarkdownPostContentWithImages(msgSendText, imageKeys)
-		if err != nil {
-			output.Fatal("VALIDATION_ERROR", err)
+		// Build message content
+		msgType := msgSendMsgType
+		var content string
+		var err error
+		if msgType == "text" {
+			content, err = buildTextContent(msgSendText)
+			if err != nil {
+				output.Fatal("VALIDATION_ERROR", err)
+			}
+		} else {
+			content, err = buildMarkdownPostContentWithImages(msgSendText, imageKeys)
+			if err != nil {
+				output.Fatal("VALIDATION_ERROR", err)
+			}
 		}
 
 		// Send message
-		resp, err := client.SendMessage(receiveIDType, msgSendTo, msgType, content)
+		var resp *api.SendMessageResponse
+		if msgSendParentID != "" {
+			resp, err = client.ReplyMessage(msgSendParentID, msgType, content, msgSendRootID, true)
+		} else {
+			resp, err = client.SendMessage(receiveIDType, msgSendTo, msgType, content)
+		}
 		if err != nil {
 			output.Fatal("API_ERROR", err)
 		}
@@ -769,6 +805,19 @@ func unescapeString(s string) string {
 	return unquoted
 }
 
+// buildTextContent creates JSON content for text messages.
+func buildTextContent(text string) (string, error) {
+	unescapedText := unescapeString(text)
+	payload := map[string]string{
+		"text": unescapedText,
+	}
+	content, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}
+
 type postElement struct {
 	tag    string
 	text   string
@@ -1053,6 +1102,9 @@ func init() {
 	msgSendCmd.Flags().StringVar(&msgSendToType, "to-type", "", "Recipient ID type: open_id, user_id, email, chat_id (auto-detected if not specified)")
 	msgSendCmd.Flags().StringVar(&msgSendText, "text", "", "Message text (markdown-lite). Use {{image}} to place images")
 	msgSendCmd.Flags().StringSliceVar(&msgSendImages, "image", nil, "Image file path (repeatable)")
+	msgSendCmd.Flags().StringVar(&msgSendMsgType, "msg-type", "post", "Message type: post (default) or text")
+	msgSendCmd.Flags().StringVar(&msgSendParentID, "parent-id", "", "Parent message ID to reply to (optional)")
+	msgSendCmd.Flags().StringVar(&msgSendRootID, "root-id", "", "Root message ID for thread replies (optional)")
 
 	// msg react flags
 	msgReactCmd.Flags().StringVar(&msgReactMessageID, "message-id", "", "Message ID to react to (required)")

@@ -224,6 +224,33 @@ func (c *Client) SendMessage(receiveIDType, receiveID, msgType, content string) 
 	return &resp, nil
 }
 
+// ReplyMessage replies to a message by message_id
+// msgType: "text" or "post"
+// content: JSON string of message content (format depends on msgType)
+// rootID: optional root message ID for thread replies
+// replyInThread: whether to reply in thread
+func (c *Client) ReplyMessage(messageID, msgType, content, rootID string, replyInThread bool) (*SendMessageResponse, error) {
+	path := fmt.Sprintf("/im/v1/messages/%s/reply", messageID)
+
+	req := ReplyMessageRequest{
+		MsgType:       msgType,
+		Content:       content,
+		RootID:        rootID,
+		ReplyInThread: replyInThread,
+	}
+
+	var resp SendMessageResponse
+	if err := c.PostWithTenantToken(path, req, &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	return &resp, nil
+}
+
 // RecallMessage recalls/deletes a message
 // messageID: the ID of the message to recall
 func (c *Client) RecallMessage(messageID string) error {

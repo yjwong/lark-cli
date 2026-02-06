@@ -1110,6 +1110,14 @@ type SendMessageRequest struct {
 	Content   string `json:"content"`  // JSON string
 }
 
+// ReplyMessageRequest is the request body for POST /im/v1/messages/:message_id/reply
+type ReplyMessageRequest struct {
+	MsgType       string `json:"msg_type"` // text, post
+	Content       string `json:"content"`  // JSON string
+	RootID        string `json:"root_id,omitempty"`
+	ReplyInThread bool   `json:"reply_in_thread,omitempty"`
+}
+
 // UploadImageResponse is the response from POST /im/v1/images
 type UploadImageResponse struct {
 	BaseResponse
@@ -1321,10 +1329,10 @@ type SheetValues struct {
 
 // ValueRange represents a range of cell values
 type ValueRange struct {
-	MajorDimension string      `json:"majorDimension,omitempty"`
-	Range          string      `json:"range,omitempty"`
-	Revision       int         `json:"revision,omitempty"`
-	Values         [][]any     `json:"values,omitempty"`
+	MajorDimension string  `json:"majorDimension,omitempty"`
+	Range          string  `json:"range,omitempty"`
+	Revision       int     `json:"revision,omitempty"`
+	Values         [][]any `json:"values,omitempty"`
 }
 
 // --- Spreadsheet API Response Types ---

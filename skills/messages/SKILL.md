@@ -11,6 +11,7 @@ Retrieve chat message history, send messages, manage reactions, and search for c
 
 - Send markdown-lite messages with links and mentions
 - Send images with `--image` and `{{image}}` placement
+- Reply to messages and threads with `--parent-id` / `--root-id`
 - Message recall/delete for cleanup
 - Add/list/remove emoji reactions
 - Browse emoji catalog reference
@@ -24,6 +25,11 @@ Retrieve chat message history, send messages, manage reactions, and search for c
 **Send message:**
 ```bash
 lark msg send --to user@example.com --text "Hello!"
+```
+
+**Reply in thread:**
+```bash
+lark msg send --to oc_12345 --parent-id om_abcdef --msg-type text --text "Replying here"
 ```
 
 **Read messages:**
@@ -82,11 +88,20 @@ Send messages to users or group chats as the bot.
 lark msg send --to ou_xxxx --text "Hello!"
 ```
 
+Reply in thread:
+
+```bash
+lark msg send --to oc_xxxx --parent-id om_xxxx --msg-type text --text "Replying here"
+```
+
 Available flags:
 - `--to` (required): Recipient identifier (user ID, open_id, email, or chat_id)
 - `--to-type`: Explicitly specify ID type (`open_id`, `user_id`, `email`, `chat_id`) - auto-detected if omitted
 - `--text`: Message text content (markdown-lite). Use `{{image}}` to place images.
 - `--image`: Image file path (repeatable)
+- `--msg-type`: Message type: `post` (default) or `text`
+- `--parent-id`: Parent message ID to reply in thread (optional)
+- `--root-id`: Root message ID for thread replies (optional)
 
 Output:
 ```json
@@ -143,6 +158,7 @@ Output:
 Notes:
 - Reactions are added as the bot/app. The bot must be in the chat to react.
 - Emoji types must match the Lark emoji catalog (e.g., `SMILE`, `LAUGH`).
+ - Replies sent with `--parent-id` are always created in a thread.
 
 ### Emoji Catalog Reference
 
