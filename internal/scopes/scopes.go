@@ -30,8 +30,8 @@ var Groups = map[string]ScopeGroup{
 	"documents": {
 		Name:        "documents",
 		Description: "Lark Docs and Drive access",
-		Scopes:      []string{"docx:document:readonly", "docs:doc:readonly", "docs:document.content:read", "docs:document.comment:read", "drive:drive:readonly", "wiki:wiki:readonly", "space:document:retrieve"},
-		Commands:    []string{"doc"},
+		Scopes:      []string{"docx:document:readonly", "docs:doc:readonly", "docs:document.content:read", "docs:document.comment:read", "drive:drive:readonly", "wiki:wiki:readonly", "space:document:retrieve", "sheets:spreadsheet"},
+		Commands:    []string{"doc", "sheet"},
 	},
 	"bitable": {
 		Name:        "bitable",

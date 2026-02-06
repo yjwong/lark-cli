@@ -1388,6 +1388,40 @@ type OutputSheetData struct {
 	Values           [][]any `json:"values"`
 }
 
+// --- Spreadsheet Write Types ---
+
+// SetSheetValuesRequest is the request body for PUT /sheets/v2/spreadsheets/:token/values
+type SetSheetValuesRequest struct {
+	ValueRange ValueRange `json:"valueRange"`
+}
+
+// SetSheetValuesData is the response data from setting sheet values
+type SetSheetValuesData struct {
+	SpreadsheetToken string `json:"spreadsheetToken,omitempty"`
+	UpdatedRange     string `json:"updatedRange,omitempty"`
+	UpdatedRows      int    `json:"updatedRows,omitempty"`
+	UpdatedColumns   int    `json:"updatedColumns,omitempty"`
+	UpdatedCells     int    `json:"updatedCells,omitempty"`
+	Revision         int    `json:"revision,omitempty"`
+}
+
+// SetSheetValuesResponse is the response from PUT /sheets/v2/spreadsheets/:token/values
+type SetSheetValuesResponse struct {
+	Code int                 `json:"code"`
+	Msg  string              `json:"msg"`
+	Data *SetSheetValuesData `json:"data,omitempty"`
+}
+
+// OutputSheetWrite is the sheet write response for CLI
+type OutputSheetWrite struct {
+	Success        bool   `json:"success"`
+	UpdatedRange   string `json:"updated_range"`
+	UpdatedRows    int    `json:"updated_rows"`
+	UpdatedColumns int    `json:"updated_columns"`
+	UpdatedCells   int    `json:"updated_cells"`
+	Revision       int    `json:"revision"`
+}
+
 // --- Bitable Types ---
 
 // BitableTable represents a table in a Bitable app

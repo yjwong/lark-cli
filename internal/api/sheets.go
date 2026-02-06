@@ -59,3 +59,29 @@ func (c *Client) GetSheetData(token, rangeStr string) (*SheetValues, error) {
 
 	return resp.Data, nil
 }
+
+// SetSheetData writes cell values to a sheet
+// token: the spreadsheet token
+// sheetRange: the range in format "sheetId!A1:C3"
+// values: 2D array of values to write
+func (c *Client) SetSheetData(token string, sheetRange string, values [][]any) (*SetSheetValuesData, error) {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/values", url.PathEscape(token))
+
+	req := SetSheetValuesRequest{
+		ValueRange: ValueRange{
+			Range:  sheetRange,
+			Values: values,
+		},
+	}
+
+	var resp SetSheetValuesResponse
+	if err := c.Put(path, req, &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	return resp.Data, nil
+}
