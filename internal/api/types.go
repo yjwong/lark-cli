@@ -638,14 +638,32 @@ type ImageBlock struct {
 	Align  int    `json:"align,omitempty"`  // Alignment: 1=left, 2=center, 3=right
 }
 
+// DividerBlock represents a divider (horizontal rule) in a document
+type DividerBlock struct{}
+
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
-	BlockID   string      `json:"block_id"`
+	BlockID   string      `json:"block_id,omitempty"`
 	ParentID  string      `json:"parent_id,omitempty"`
 	Children  []string    `json:"children,omitempty"`
 	BlockType int         `json:"block_type"`
 	Page      *TextBlock  `json:"page,omitempty"`
 	Text      *TextBlock  `json:"text,omitempty"`
+	Heading1  *TextBlock  `json:"heading1,omitempty"`
+	Heading2  *TextBlock  `json:"heading2,omitempty"`
+	Heading3  *TextBlock  `json:"heading3,omitempty"`
+	Heading4  *TextBlock  `json:"heading4,omitempty"`
+	Heading5  *TextBlock  `json:"heading5,omitempty"`
+	Heading6  *TextBlock  `json:"heading6,omitempty"`
+	Heading7  *TextBlock  `json:"heading7,omitempty"`
+	Heading8  *TextBlock  `json:"heading8,omitempty"`
+	Heading9  *TextBlock  `json:"heading9,omitempty"`
+	Bullet    *TextBlock  `json:"bullet,omitempty"`
+	Ordered   *TextBlock  `json:"ordered,omitempty"`
+	Code      *TextBlock  `json:"code,omitempty"`
+	Quote     *TextBlock  `json:"quote,omitempty"`
+	TodoBlock *TextBlock  `json:"todo,omitempty"`
+	Divider   *DividerBlock `json:"divider,omitempty"`
 	Image     *ImageBlock `json:"image,omitempty"`
 }
 
@@ -675,6 +693,46 @@ type DocumentContentResponse struct {
 	Data struct {
 		Content string `json:"content,omitempty"`
 	} `json:"data,omitempty"`
+}
+
+// --- Document Write Types ---
+
+// CreateDocumentRequest is the request body for POST /docx/v1/documents
+type CreateDocumentRequest struct {
+	Title       string `json:"title,omitempty"`
+	FolderToken string `json:"folder_token,omitempty"`
+}
+
+// CreateBlockChildrenRequest is the request body for creating block children
+type CreateBlockChildrenRequest struct {
+	Children []DocumentBlock `json:"children"`
+	Index    int             `json:"index,omitempty"`
+}
+
+// CreateBlockChildrenResponse is the response from creating block children
+type CreateBlockChildrenResponse struct {
+	BaseResponse
+	Data struct {
+		Children           []DocumentBlock `json:"children,omitempty"`
+		DocumentRevisionID int             `json:"document_revision_id,omitempty"`
+		ClientToken        string          `json:"client_token,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// OutputDocumentCreate is the create document response for CLI
+type OutputDocumentCreate struct {
+	Success    bool   `json:"success"`
+	DocumentID string `json:"document_id"`
+	RevisionID int    `json:"revision_id"`
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+}
+
+// OutputDocumentAppend is the append blocks response for CLI
+type OutputDocumentAppend struct {
+	Success            bool            `json:"success"`
+	DocumentRevisionID int             `json:"document_revision_id"`
+	Blocks             []DocumentBlock `json:"blocks,omitempty"`
 }
 
 // --- Document CLI Output Types ---
