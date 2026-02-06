@@ -95,6 +95,11 @@ func (c *Client) Patch(path string, body interface{}, result interface{}) error 
 	return c.doRequest("PATCH", path, body, result)
 }
 
+// Put performs a PUT request
+func (c *Client) Put(path string, body interface{}, result interface{}) error {
+	return c.doRequest("PUT", path, body, result)
+}
+
 // Delete performs a DELETE request
 func (c *Client) Delete(path string, result interface{}) error {
 	return c.doRequest("DELETE", path, nil, result)

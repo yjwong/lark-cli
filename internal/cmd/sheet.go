@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/yjwong/lark-cli/internal/api"
@@ -188,12 +191,112 @@ func columnIndexToLetter(index int) string {
 	return string(rune('A' + index - 1))
 }
 
+// --- sheet write ---
+
+var sheetWriteCmd = &cobra.Command{
+	Use:   "write <spreadsheet_token>",
+	Short: "Write cell data to a sheet",
+	Long: `Write cell values to a Lark spreadsheet.
+
+Values are provided as a JSON array of arrays via --values or stdin.
+
+By default, writes to the first sheet starting at A1.
+Use --sheet to specify a sheet ID, and --range to specify a target range.
+
+The spreadsheet_token is from the spreadsheet URL.
+
+Examples:
+  lark sheet write T4mHsrFyzhXrj0tVzRslUGx8gkA --values '[["hello","world"],["foo","bar"]]'
+  lark sheet write T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --range A1:B2 --values '[["a","b"],["c","d"]]'
+  echo '[["a","b"]]' | lark sheet write T4mHsrFyzhXrj0tVzRslUGx8gkA`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		sheetID, _ := cmd.Flags().GetString("sheet")
+		rangeSpec, _ := cmd.Flags().GetString("range")
+		valuesJSON, _ := cmd.Flags().GetString("values")
+
+		client := api.NewClient()
+
+		// If no sheet ID specified, get the first sheet
+		if sheetID == "" {
+			sheets, err := client.GetSpreadsheetSheets(token)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+			if len(sheets) == 0 {
+				output.Fatal("NO_SHEETS", fmt.Errorf("spreadsheet has no sheets"))
+			}
+			firstSheet := sheets[0]
+			for _, s := range sheets[1:] {
+				if s.Index < firstSheet.Index {
+					firstSheet = s
+				}
+			}
+			sheetID = firstSheet.SheetID
+		}
+
+		// Parse values from --values flag or stdin
+		if valuesJSON == "" {
+			// Try reading from stdin
+			stat, _ := os.Stdin.Stat()
+			if (stat.Mode() & os.ModeCharDevice) == 0 {
+				data, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					output.Fatal("INPUT_ERROR", fmt.Errorf("failed to read stdin: %w", err))
+				}
+				valuesJSON = string(data)
+			}
+		}
+
+		if valuesJSON == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--values is required or provide JSON via stdin"))
+		}
+
+		var values [][]any
+		if err := json.Unmarshal([]byte(valuesJSON), &values); err != nil {
+			output.Fatal("PARSE_ERROR", fmt.Errorf("invalid values JSON (must be array of arrays): %w", err))
+		}
+
+		// Build the range string
+		if rangeSpec == "" {
+			rangeSpec = "A1"
+		}
+		fullRange := sheetID + "!" + rangeSpec
+
+		// Write the data
+		data, err := client.SetSheetData(token, fullRange, values)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputSheetWrite{
+			Success: true,
+		}
+		if data != nil {
+			result.UpdatedRange = data.UpdatedRange
+			result.UpdatedRows = data.UpdatedRows
+			result.UpdatedColumns = data.UpdatedColumns
+			result.UpdatedCells = data.UpdatedCells
+			result.Revision = data.Revision
+		}
+
+		output.JSON(result)
+	},
+}
+
 func init() {
 	// Register subcommands
 	sheetCmd.AddCommand(sheetListCmd)
 	sheetCmd.AddCommand(sheetReadCmd)
+	sheetCmd.AddCommand(sheetWriteCmd)
 
 	// Flags for sheet read
 	sheetReadCmd.Flags().String("sheet", "", "Sheet ID to read from (default: first sheet)")
 	sheetReadCmd.Flags().String("range", "", "Cell range to read (e.g., A1:Z100)")
+
+	// Flags for sheet write
+	sheetWriteCmd.Flags().String("sheet", "", "Sheet ID to write to (default: first sheet)")
+	sheetWriteCmd.Flags().String("range", "", "Target range in A1 notation (e.g., A1:C3, default: A1)")
+	sheetWriteCmd.Flags().String("values", "", "JSON array of arrays (e.g., '[[\"a\",\"b\"],[\"c\",\"d\"]]')")
 }
