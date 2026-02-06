@@ -80,6 +80,29 @@ Item types: `doc`, `docx`, `sheet`, `bitable`, `mindnote`, `file`, `folder`, `sh
 
 For shortcuts, includes `shortcut_info` with `target_type` and `target_token`.
 
+### Download File from Drive
+
+```bash
+lark doc download <file_token> -o <output_path>
+```
+
+Downloads a file from Lark Drive. The file token is obtained from `doc list` or `doc search` output. Only files with type "file" can be downloaded (not docs, sheets, etc - those are Lark native formats).
+
+Options:
+- `-o, --output`: Output file path (required)
+
+Output:
+```json
+{
+  "file_token": "FG3obxWuaoftXIx0CvxlQAabcef",
+  "filename": "report.pdf",
+  "content_type": "application/pdf",
+  "size": 1048576
+}
+```
+
+**Note:** You must have read access to the file. If you get a 403 error, the file may not be shared with you.
+
 ### Resolve Wiki Node to Document ID
 
 ```bash
@@ -314,6 +337,7 @@ Output:
 | Search for documents | `doc search` | Find docs by keyword across Drive |
 | Search wiki by keyword | `doc wiki-search` | Find wiki nodes by keyword |
 | List folder contents | `doc list [folder-token]` | Browse Drive files and folders |
+| Download a file | `doc download` | Save Drive files locally |
 | Wiki URL | `doc wiki` then `doc get` | Must resolve wiki node first |
 | List wiki sub-pages | `doc wiki-children` | Browse wiki hierarchy |
 | Read/summarize content | `doc get` | Markdown is compact (~90KB) |

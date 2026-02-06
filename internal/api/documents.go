@@ -186,6 +186,22 @@ func (c *Client) DownloadMedia(fileToken, documentID string) (io.ReadCloser, str
 	return c.Download(path)
 }
 
+// DownloadDriveFile downloads a file from Lark Drive
+// fileToken: the file token from doc list or search
+// Returns the file content as a ReadCloser and the content type
+func (c *Client) DownloadDriveFile(fileToken string) (io.ReadCloser, string, error) {
+	path := fmt.Sprintf("/drive/v1/files/%s/download", url.PathEscape(fileToken))
+	// Try user token first, if that fails it might be a permission issue
+	return c.Download(path)
+}
+
+// DownloadDriveFileWithTenant downloads a file using tenant token
+// This may be needed for files shared with the bot
+func (c *Client) DownloadDriveFileWithTenant(fileToken string) (io.ReadCloser, string, error) {
+	path := fmt.Sprintf("/drive/v1/files/%s/download", url.PathEscape(fileToken))
+	return c.DownloadWithTenantToken(path)
+}
+
 // SearchDocuments searches for documents using the Lark Docs API
 // query: search keyword (required)
 // ownerIDs: optional filter by owner user IDs
