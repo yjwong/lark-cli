@@ -33,6 +33,12 @@ var Groups = map[string]ScopeGroup{
 		Scopes:      []string{"docx:document:readonly", "docs:doc:readonly", "docs:document.content:read", "docs:document.comment:read", "drive:drive:readonly", "wiki:wiki:readonly", "space:document:retrieve"},
 		Commands:    []string{"doc"},
 	},
+	"bitable": {
+		Name:        "bitable",
+		Description: "Lark Bitable (database) access",
+		Scopes:      []string{"bitable:app:readonly"},
+		Commands:    []string{"bitable"},
+	},
 	"messages": {
 		Name:        "messages",
 		Description: "Chat and messaging",
@@ -55,7 +61,7 @@ var Groups = map[string]ScopeGroup{
 
 // AllGroupNames returns all scope group names in a consistent order
 func AllGroupNames() []string {
-	return []string{"calendar", "contacts", "documents", "messages", "mail", "minutes"}
+	return []string{"calendar", "contacts", "documents", "bitable", "messages", "mail", "minutes"}
 }
 
 // GetScopesForGroups returns the combined scopes for the given group names

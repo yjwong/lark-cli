@@ -63,6 +63,7 @@ func Execute() {
 
 func init() {
 	rootCmd.AddCommand(authCmd)
+	rootCmd.AddCommand(bitableCmd)
 	rootCmd.AddCommand(calCmd)
 	rootCmd.AddCommand(chatCmd)
 	rootCmd.AddCommand(contactCmd)

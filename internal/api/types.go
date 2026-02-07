@@ -1379,3 +1379,104 @@ type OutputSheetData struct {
 	ColumnCount      int     `json:"column_count"`
 	Values           [][]any `json:"values"`
 }
+
+// --- Bitable Types ---
+
+// BitableTable represents a table in a Bitable app
+type BitableTable struct {
+	TableID  string `json:"table_id"`
+	Name     string `json:"name"`
+	Revision int    `json:"revision,omitempty"`
+}
+
+// BitableField represents a field (column) in a Bitable table
+type BitableField struct {
+	FieldID   string `json:"field_id"`
+	FieldName string `json:"field_name"`
+	Type      int    `json:"type"`
+	IsPrimary bool   `json:"is_primary,omitempty"`
+}
+
+// BitableRecord represents a record (row) in a Bitable table
+type BitableRecord struct {
+	RecordID string         `json:"record_id"`
+	Fields   map[string]any `json:"fields"`
+}
+
+// BitableTablesResponse is the API response for listing tables
+type BitableTablesResponse struct {
+	BaseResponse
+	Data struct {
+		HasMore   bool           `json:"has_more"`
+		PageToken string         `json:"page_token,omitempty"`
+		Items     []BitableTable `json:"items,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// BitableFieldsResponse is the API response for listing fields
+type BitableFieldsResponse struct {
+	BaseResponse
+	Data struct {
+		HasMore   bool           `json:"has_more"`
+		PageToken string         `json:"page_token,omitempty"`
+		Items     []BitableField `json:"items,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// BitableRecordsResponse is the API response for listing records
+type BitableRecordsResponse struct {
+	BaseResponse
+	Data struct {
+		HasMore   bool            `json:"has_more"`
+		PageToken string          `json:"page_token,omitempty"`
+		Total     int             `json:"total,omitempty"`
+		Items     []BitableRecord `json:"items,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// --- Bitable CLI Output Types ---
+
+// OutputBitableTableList is the list tables response for CLI
+type OutputBitableTableList struct {
+	AppToken string               `json:"app_token"`
+	Tables   []OutputBitableTable `json:"tables"`
+	Count    int                  `json:"count"`
+}
+
+// OutputBitableTable is the simplified table format for CLI output
+type OutputBitableTable struct {
+	TableID string `json:"table_id"`
+	Name    string `json:"name"`
+}
+
+// OutputBitableFieldList is the list fields response for CLI
+type OutputBitableFieldList struct {
+	AppToken string               `json:"app_token"`
+	TableID  string               `json:"table_id"`
+	Fields   []OutputBitableField `json:"fields"`
+	Count    int                  `json:"count"`
+}
+
+// OutputBitableField is the simplified field format for CLI output
+type OutputBitableField struct {
+	FieldID   string `json:"field_id"`
+	FieldName string `json:"field_name"`
+	Type      string `json:"type"`
+	IsPrimary bool   `json:"is_primary,omitempty"`
+}
+
+// OutputBitableRecordList is the list records response for CLI
+type OutputBitableRecordList struct {
+	AppToken string                `json:"app_token"`
+	TableID  string                `json:"table_id"`
+	Records  []OutputBitableRecord `json:"records"`
+	Total    int                   `json:"total,omitempty"`
+	Count    int                   `json:"count"`
+	HasMore  bool                  `json:"has_more"`
+}
+
+// OutputBitableRecord is the simplified record format for CLI output
+type OutputBitableRecord struct {
+	RecordID string         `json:"record_id"`
+	Fields   map[string]any `json:"fields"`
+}
