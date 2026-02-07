@@ -75,6 +75,53 @@ func (c *Client) GetDocumentBlocks(documentID string) ([]DocumentBlock, error) {
 	return allBlocks, nil
 }
 
+// CreateDocument creates a new document
+// title: document title
+// folderToken: optional folder token (empty for root)
+func (c *Client) CreateDocument(title, folderToken string) (*Document, error) {
+	req := CreateDocumentRequest{
+		Title:       title,
+		FolderToken: folderToken,
+	}
+
+	var resp DocumentResponse
+	if err := c.Post("/docx/v1/documents", req, &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	return resp.Data.Document, nil
+}
+
+// CreateDocumentBlocks creates child blocks under a parent block in a document
+// documentID: the document ID
+// blockID: the parent block ID (use documentID for root page block)
+// children: blocks to create
+// index: insertion position (-1 for end)
+func (c *Client) CreateDocumentBlocks(documentID, blockID string, children []DocumentBlock, index int) ([]DocumentBlock, int, error) {
+	path := fmt.Sprintf("/docx/v1/documents/%s/blocks/%s/children?document_revision_id=-1",
+		url.PathEscape(documentID), url.PathEscape(blockID))
+
+	req := CreateBlockChildrenRequest{
+		Children: children,
+		Index:    index,
+	}
+
+	var resp CreateBlockChildrenResponse
+	if err := c.Post(path, req, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	if resp.Code != 0 {
+		return nil, 0, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	return resp.Data.Children, resp.Data.DocumentRevisionID, nil
+}
+
 // ListFolderItems lists items in a Lark Drive folder
 // folderToken: folder token (empty for root cloud space)
 // pageSize: number of items per page (max 200)
