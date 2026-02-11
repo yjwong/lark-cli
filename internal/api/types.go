@@ -1197,6 +1197,52 @@ type OutputChatList struct {
 	Query string       `json:"query,omitempty"`
 }
 
+// --- Chat Member Types ---
+
+// ChatMember represents a member of a chat group from the IM members API
+// (GET /im/v1/chats/:chat_id/members). Not to be confused with ChatMemberAttendee (Calendar API).
+type ChatMember struct {
+	MemberIDType string `json:"member_id_type,omitempty"`
+	MemberID     string `json:"member_id,omitempty"`
+	Name         string `json:"name,omitempty"`
+	TenantKey    string `json:"tenant_key,omitempty"`
+}
+
+// ListChatMembersResponse is the response from GET /im/v1/chats/:chat_id/members
+type ListChatMembersResponse struct {
+	BaseResponse
+	Data struct {
+		Items       []ChatMember `json:"items,omitempty"`
+		PageToken   string       `json:"page_token,omitempty"`
+		HasMore     bool         `json:"has_more"`
+		MemberCount int          `json:"member_count,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// ListChatsResponse is the response from GET /im/v1/chats
+type ListChatsResponse struct {
+	BaseResponse
+	Data struct {
+		Items     []Chat `json:"items,omitempty"`
+		PageToken string `json:"page_token,omitempty"`
+		HasMore   bool   `json:"has_more"`
+	} `json:"data,omitempty"`
+}
+
+// OutputChatMember is the simplified chat member format for CLI output.
+// OpenID is guaranteed to be an open_id because the API is called with member_id_type=open_id.
+type OutputChatMember struct {
+	OpenID string `json:"open_id"`
+	Name   string `json:"name"`
+}
+
+// OutputChatMemberList is the chat member list response for CLI
+type OutputChatMemberList struct {
+	ChatID  string             `json:"chat_id"`
+	Members []OutputChatMember `json:"members"`
+	Count   int                `json:"count"`
+}
+
 // --- Minutes Types ---
 
 // Minute represents a Lark Minutes recording
