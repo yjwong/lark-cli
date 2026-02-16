@@ -78,7 +78,7 @@ See `USAGE.md` for full CLI documentation. Main commands:
 - `doc list [folder_token]` - List items in a Drive folder
 - `doc get <document_id>` - Get document content as markdown
 - `doc blocks <document_id>` - Get document block structure (JSON)
-- `doc wiki <node_token>` - Resolve wiki node to document token
+- `doc wiki` - Wiki command group (resolve/spaces/list/search + legacy compatibility)
 
 ### Mail (`mail`)
 - `mail setup` - Configure IMAP credentials (interactive)

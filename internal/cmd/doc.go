@@ -175,7 +175,25 @@ Examples:
 // --- doc wiki ---
 
 var docWikiCmd = &cobra.Command{
-	Use:   "wiki <node_token>",
+	Use:   "wiki",
+	Short: "Wiki commands",
+	Long: `Browse and query wiki spaces and nodes.
+
+Examples:
+  lark doc wiki spaces
+  lark doc wiki list --space-id 6946843325487912356
+  lark doc wiki list --node-token X8Tawq431ifOYSklP2tlamKsgNh
+  lark doc wiki resolve X8Tawq431ifOYSklP2tlamKsgNh
+  lark doc wiki search "meeting notes"
+	`,
+	Args: cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		_ = cmd.Help()
+	},
+}
+
+var docWikiResolveCmd = &cobra.Command{
+	Use:   "resolve <node_token>",
 	Short: "Resolve wiki node to document token",
 	Long: `Resolve a wiki node token to get the underlying document information.
 
@@ -186,87 +204,212 @@ then the node_token is ABC123xyz.
 This returns the obj_token (document ID) which can be used with 'doc get'.
 
 Examples:
-  lark doc wiki X8Tawq431ifOYSklP2tlamKsgNh`,
+  lark doc wiki resolve X8Tawq431ifOYSklP2tlamKsgNh`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		nodeToken := args[0]
-
-		client := api.NewClient()
-
-		node, err := client.GetWikiNode(nodeToken)
-		if err != nil {
-			output.Fatal("API_ERROR", err)
-		}
-
-		result := api.OutputWikiNode{
-			NodeToken: node.NodeToken,
-			ObjToken:  node.ObjToken,
-			ObjType:   node.ObjType,
-			Title:     node.Title,
-			SpaceID:   node.SpaceID,
-			NodeType:  node.NodeType,
-			HasChild:  node.HasChild,
-		}
-
-		output.JSON(result)
+		runWikiResolve(args[0])
 	},
 }
 
-// --- doc wiki-children ---
+var docWikiSpacesCmd = &cobra.Command{
+	Use:   "spaces",
+	Short: "List accessible wiki spaces",
+	Long: `List wiki spaces that the current user or app can access.
 
-var docWikiChildrenCmd = &cobra.Command{
-	Use:   "wiki-children <node_token>",
-	Short: "List child nodes of a wiki node",
-	Long: `List the immediate child nodes of a wiki node.
-
-The node_token is from the wiki URL.
-For example, if the URL is https://xxx.larksuite.com/wiki/ABC123xyz
-then the node_token is ABC123xyz.
-
-This first resolves the node to get the space_id, then fetches its children.
+This endpoint is permission-filtered, so empty pages may still have has_more=true.
 
 Examples:
-  lark doc wiki-children RBCmwZEqhili9ZkKS5fl1Ov2gKc`,
-	Args: cobra.ExactArgs(1),
+  lark doc wiki spaces`,
+	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		nodeToken := args[0]
-
 		client := api.NewClient()
 
-		// First resolve the node to get space_id
-		node, err := client.GetWikiNode(nodeToken)
-		if err != nil {
-			output.Fatal("API_ERROR", err)
+		var allSpaces []api.WikiSpace
+		var pageToken string
+		for {
+			spaces, hasMore, nextToken, err := client.ListWikiSpaces(50, pageToken)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+			allSpaces = append(allSpaces, spaces...)
+			if !hasMore {
+				break
+			}
+			pageToken = nextToken
 		}
 
-		// Then get children
-		children, err := client.GetWikiNodeChildren(node.SpaceID, nodeToken)
-		if err != nil {
-			output.Fatal("API_ERROR", err)
-		}
-
-		outputChildren := make([]api.OutputWikiNode, len(children))
-		for i, child := range children {
-			outputChildren[i] = api.OutputWikiNode{
-				NodeToken: child.NodeToken,
-				ObjToken:  child.ObjToken,
-				ObjType:   child.ObjType,
-				Title:     child.Title,
-				SpaceID:   child.SpaceID,
-				NodeType:  child.NodeType,
-				HasChild:  child.HasChild,
+		outputSpaces := make([]api.OutputWikiSpace, len(allSpaces))
+		for i, space := range allSpaces {
+			outputSpaces[i] = api.OutputWikiSpace{
+				SpaceID:     space.SpaceID,
+				Name:        space.Name,
+				Description: space.Description,
+				SpaceType:   space.SpaceType,
+				Visibility:  space.Visibility,
+				OpenSharing: space.OpenSharing,
 			}
 		}
 
-		result := api.OutputWikiChildren{
-			ParentNodeToken: nodeToken,
-			SpaceID:         node.SpaceID,
-			Children:        outputChildren,
-			Count:           len(outputChildren),
+		output.JSON(api.OutputWikiSpaces{
+			Spaces: outputSpaces,
+			Count:  len(outputSpaces),
+		})
+	},
+}
+
+var docWikiListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List wiki nodes in a space",
+	Long: `List wiki nodes in a space.
+
+You can list top-level nodes with --space-id, or list a specific node's children
+with --node-token (it will auto-resolve space_id and parent_node_token).
+
+Examples:
+  lark doc wiki list --space-id 6946843325487912356
+  lark doc wiki list --space-id 6946843325487912356 --parent-node-token wikcnb0A1...
+  lark doc wiki list --node-token wikcnb0A1...`,
+	Args: cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		spaceID, _ := cmd.Flags().GetString("space-id")
+		parentNodeToken, _ := cmd.Flags().GetString("parent-node-token")
+		nodeToken, _ := cmd.Flags().GetString("node-token")
+
+		if spaceID == "" && nodeToken == "" {
+			output.Fatal("VALIDATION_ERROR", fmt.Errorf("either --space-id or --node-token is required"))
 		}
 
-		output.JSON(result)
+		client := api.NewClient()
+
+		if nodeToken != "" {
+			node, err := client.GetWikiNode(nodeToken)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+			if spaceID == "" {
+				spaceID = node.SpaceID
+			}
+			if parentNodeToken == "" {
+				parentNodeToken = nodeToken
+			}
+		}
+
+		var allNodes []api.WikiNode
+		var pageToken string
+		for {
+			nodes, hasMore, nextToken, err := client.ListWikiNodes(spaceID, parentNodeToken, 50, pageToken)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+			allNodes = append(allNodes, nodes...)
+			if !hasMore {
+				break
+			}
+			pageToken = nextToken
+		}
+
+		outputNodes := make([]api.OutputWikiNode, len(allNodes))
+		for i, n := range allNodes {
+			outputNodes[i] = toOutputWikiNode(n)
+		}
+
+		output.JSON(api.OutputWikiNodeList{
+			SpaceID:         spaceID,
+			ParentNodeToken: parentNodeToken,
+			Nodes:           outputNodes,
+			Count:           len(outputNodes),
+		})
 	},
+}
+
+var docWikiSearchSubCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Search wiki nodes by keyword",
+	Long: `Search for wiki nodes by keyword. Returns wiki nodes the user has permission to view.
+
+Optionally filter by wiki space or search within a specific node's children.
+
+Examples:
+  lark doc wiki search "meeting notes"
+  lark doc wiki search "PRD" --space-id 7344964278161604639`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		query := args[0]
+		spaceID, _ := cmd.Flags().GetString("space-id")
+		nodeID, _ := cmd.Flags().GetString("node-id")
+		runWikiSearch(query, spaceID, nodeID)
+	},
+}
+
+// --- legacy wiki commands for forward compatibility ---
+
+var docWikiChildrenCmd = &cobra.Command{
+	Use:   "wiki-children <node_token>",
+	Short: "List child nodes of a wiki node (legacy)",
+	Long: `Legacy command. Prefer 'lark doc wiki list --node-token <node_token>'.
+
+List the immediate child nodes of a wiki node.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		runWikiChildren(args[0])
+	},
+}
+
+func toOutputWikiNode(node api.WikiNode) api.OutputWikiNode {
+	return api.OutputWikiNode{
+		NodeToken: node.NodeToken,
+		ObjToken:  node.ObjToken,
+		ObjType:   node.ObjType,
+		Title:     node.Title,
+		SpaceID:   node.SpaceID,
+		NodeType:  node.NodeType,
+		HasChild:  node.HasChild,
+	}
+}
+
+func runWikiResolve(nodeToken string) {
+	client := api.NewClient()
+
+	node, err := client.GetWikiNode(nodeToken)
+	if err != nil {
+		output.Fatal("API_ERROR", err)
+	}
+
+	output.JSON(api.OutputWikiNode{
+		NodeToken: node.NodeToken,
+		ObjToken:  node.ObjToken,
+		ObjType:   node.ObjType,
+		Title:     node.Title,
+		SpaceID:   node.SpaceID,
+		NodeType:  node.NodeType,
+		HasChild:  node.HasChild,
+	})
+}
+
+func runWikiChildren(nodeToken string) {
+	client := api.NewClient()
+
+	node, err := client.GetWikiNode(nodeToken)
+	if err != nil {
+		output.Fatal("API_ERROR", err)
+	}
+
+	children, err := client.GetWikiNodeChildren(node.SpaceID, nodeToken)
+	if err != nil {
+		output.Fatal("API_ERROR", err)
+	}
+
+	outputChildren := make([]api.OutputWikiNode, len(children))
+	for i, child := range children {
+		outputChildren[i] = toOutputWikiNode(child)
+	}
+
+	output.JSON(api.OutputWikiChildren{
+		ParentNodeToken: nodeToken,
+		SpaceID:         node.SpaceID,
+		Children:        outputChildren,
+		Count:           len(outputChildren),
+	})
 }
 
 // --- doc comments ---
@@ -394,8 +537,10 @@ func objTypeToString(objType int) string {
 
 var docWikiSearchCmd = &cobra.Command{
 	Use:   "wiki-search <query>",
-	Short: "Search wiki nodes by keyword",
-	Long: `Search for wiki nodes by keyword. Returns wiki nodes the user has permission to view.
+	Short: "Search wiki nodes by keyword (legacy)",
+	Long: `Legacy command. Prefer 'lark doc wiki search <query>'.
+
+Search for wiki nodes by keyword. Returns wiki nodes the user has permission to view.
 
 Optionally filter by wiki space or search within a specific node's children.
 
@@ -407,40 +552,40 @@ Examples:
 		query := args[0]
 		spaceID, _ := cmd.Flags().GetString("space-id")
 		nodeID, _ := cmd.Flags().GetString("node-id")
-
-		// Validate: node-id requires space-id
-		if nodeID != "" && spaceID == "" {
-			output.Fatal("VALIDATION_ERROR", fmt.Errorf("--node-id requires --space-id"))
-		}
-
-		client := api.NewClient()
-
-		results, err := client.SearchWikiNodes(query, spaceID, nodeID)
-		if err != nil {
-			output.Fatal("API_ERROR", err)
-		}
-
-		outputItems := make([]api.OutputWikiSearchItem, len(results))
-		for i, item := range results {
-			outputItems[i] = api.OutputWikiSearchItem{
-				NodeID:   item.NodeID,
-				ObjToken: item.ObjToken,
-				ObjType:  objTypeToString(item.ObjType),
-				Title:    item.Title,
-				URL:      item.URL,
-				SpaceID:  item.SpaceID,
-			}
-		}
-
-		result := api.OutputWikiSearchResult{
-			Query:   query,
-			SpaceID: spaceID,
-			Results: outputItems,
-			Count:   len(outputItems),
-		}
-
-		output.JSON(result)
+		runWikiSearch(query, spaceID, nodeID)
 	},
+}
+
+func runWikiSearch(query, spaceID, nodeID string) {
+	if nodeID != "" && spaceID == "" {
+		output.Fatal("VALIDATION_ERROR", fmt.Errorf("--node-id requires --space-id"))
+	}
+
+	client := api.NewClient()
+
+	results, err := client.SearchWikiNodes(query, spaceID, nodeID)
+	if err != nil {
+		output.Fatal("API_ERROR", err)
+	}
+
+	outputItems := make([]api.OutputWikiSearchItem, len(results))
+	for i, item := range results {
+		outputItems[i] = api.OutputWikiSearchItem{
+			NodeID:   item.NodeID,
+			ObjToken: item.ObjToken,
+			ObjType:  objTypeToString(item.ObjType),
+			Title:    item.Title,
+			URL:      item.URL,
+			SpaceID:  item.SpaceID,
+		}
+	}
+
+	output.JSON(api.OutputWikiSearchResult{
+		Query:   query,
+		SpaceID: spaceID,
+		Results: outputItems,
+		Count:   len(outputItems),
+	})
 }
 
 // --- doc search ---
@@ -621,21 +766,35 @@ Examples:
 }
 
 func init() {
+	// Wiki subcommands
+	docWikiCmd.AddCommand(docWikiResolveCmd)
+	docWikiCmd.AddCommand(docWikiSpacesCmd)
+	docWikiCmd.AddCommand(docWikiListCmd)
+	docWikiCmd.AddCommand(docWikiSearchSubCmd)
+
 	// Register subcommands
 	docCmd.AddCommand(docGetCmd)
 	docCmd.AddCommand(docBlocksCmd)
 	docCmd.AddCommand(docListCmd)
 	docCmd.AddCommand(docWikiCmd)
+	// Legacy aliases for forward compatibility
 	docCmd.AddCommand(docWikiChildrenCmd)
+	docCmd.AddCommand(docWikiSearchCmd)
 	docCmd.AddCommand(docCommentsCmd)
 	docCmd.AddCommand(docSearchCmd)
 	docCmd.AddCommand(docImageCmd)
-	docCmd.AddCommand(docWikiSearchCmd)
 	docCmd.AddCommand(docDownloadCmd)
 
-	// Flags for doc wiki-search
+	// Flags for wiki search
+	docWikiSearchSubCmd.Flags().String("space-id", "", "Filter to specific wiki space ID")
+	docWikiSearchSubCmd.Flags().String("node-id", "", "Search within a node and its children (requires --space-id)")
 	docWikiSearchCmd.Flags().String("space-id", "", "Filter to specific wiki space ID")
 	docWikiSearchCmd.Flags().String("node-id", "", "Search within a node and its children (requires --space-id)")
+
+	// Flags for wiki list
+	docWikiListCmd.Flags().String("space-id", "", "Wiki space ID")
+	docWikiListCmd.Flags().String("parent-node-token", "", "Parent node token (empty = top-level)")
+	docWikiListCmd.Flags().String("node-token", "", "Resolve this node and list its immediate children")
 
 	// Flags for doc search
 	docSearchCmd.Flags().StringSlice("owner", nil, "Filter by owner user ID (can be repeated)")
