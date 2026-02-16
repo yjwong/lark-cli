@@ -6,7 +6,7 @@ A CLI tool for interacting with Lark APIs (calendar, contacts, documents). Desig
 
 ### 1. Create a Lark App
 
-1. Go to https://open.larksuite.com and create a custom app
+1. Go to https://open.larksuite.com (or https://open.feishu.cn for Feishu) and create a custom app
 2. Enable these permissions:
    - `calendar:calendar` (read/write calendar and events)
    - `contact:contact.base:readonly` (read contacts)
@@ -34,6 +34,7 @@ cp config.example.yaml .lark/config.yaml
 Edit `.lark/config.yaml`:
 ```yaml
 app_id: "cli_xxxxxxxxxx"  # Your App ID
+region: "lark"            # "lark" (default) or "feishu"
 ```
 
 Set your app secret as environment variable:
@@ -1239,6 +1240,7 @@ Config file: `.lark/config.yaml`
 
 ```yaml
 app_id: "cli_xxxxxxxxxx"
+region: "lark" # or "feishu"
 defaults:
   timezone: "Asia/Singapore"
   reminder_minutes: 15

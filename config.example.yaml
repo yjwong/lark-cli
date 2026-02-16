@@ -1,9 +1,12 @@
 # Lark Calendar CLI Configuration
-# Copy this to .lark-cal/config.yaml and fill in your values
+# Copy this to .lark/config.yaml and fill in your values
 
-# Lark App credentials (from https://open.larksuite.com Developer Console)
+# Lark/Feishu App credentials (from the Developer Console)
 app_id: "cli_xxxxxxxxxx"
 # app_secret should be set via LARK_APP_SECRET environment variable
+
+# API/auth region: lark (default) or feishu
+region: "lark"
 
 # Default settings
 defaults:
