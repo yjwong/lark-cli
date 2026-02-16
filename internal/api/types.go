@@ -712,6 +712,42 @@ type MediaTempDownloadURLResponse struct {
 
 // --- Wiki Types ---
 
+// WikiSpace represents a wiki space from the Wiki API
+type WikiSpace struct {
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	SpaceID     string `json:"space_id,omitempty"`
+	SpaceType   string `json:"space_type,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
+	OpenSharing string `json:"open_sharing,omitempty"`
+}
+
+// ListWikiSpacesResponse is the response from GET /wiki/v2/spaces
+type ListWikiSpacesResponse struct {
+	BaseResponse
+	Data struct {
+		Items     []WikiSpace `json:"items,omitempty"`
+		PageToken string      `json:"page_token,omitempty"`
+		HasMore   bool        `json:"has_more"`
+	} `json:"data,omitempty"`
+}
+
+// OutputWikiSpace is a wiki space item for CLI output
+type OutputWikiSpace struct {
+	SpaceID     string `json:"space_id"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	SpaceType   string `json:"space_type,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
+	OpenSharing string `json:"open_sharing,omitempty"`
+}
+
+// OutputWikiSpaces is the wiki spaces list response for CLI
+type OutputWikiSpaces struct {
+	Spaces []OutputWikiSpace `json:"spaces"`
+	Count  int               `json:"count"`
+}
+
 // WikiNode represents a wiki node from the Wiki API
 type WikiNode struct {
 	SpaceID         string `json:"space_id"`
@@ -765,6 +801,14 @@ type OutputWikiChildren struct {
 	ParentNodeToken string           `json:"parent_node_token"`
 	SpaceID         string           `json:"space_id"`
 	Children        []OutputWikiNode `json:"children"`
+	Count           int              `json:"count"`
+}
+
+// OutputWikiNodeList is the wiki node list response for CLI
+type OutputWikiNodeList struct {
+	SpaceID         string           `json:"space_id"`
+	ParentNodeToken string           `json:"parent_node_token,omitempty"`
+	Nodes           []OutputWikiNode `json:"nodes"`
 	Count           int              `json:"count"`
 }
 

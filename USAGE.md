@@ -638,17 +638,35 @@ Item types: `doc`, `docx`, `sheet`, `bitable`, `mindnote`, `file`, `folder`, `sh
 
 For shortcuts, a `shortcut_info` field is included with `target_type` and `target_token`.
 
-#### Resolve Wiki Node
+#### Wiki Commands
 
 ```bash
-./lark doc wiki <node-token>
+# List all accessible wiki spaces
+./lark doc wiki spaces
+
+# List top-level nodes in a wiki space
+./lark doc wiki list --space-id 6946843325487912356
+
+# List children of a specific wiki node (auto-resolve space)
+./lark doc wiki list --node-token X8Tawq431ifOYSklP2tlamKsgNh
+
+# Resolve wiki node to underlying document token
+./lark doc wiki resolve X8Tawq431ifOYSklP2tlamKsgNh
+
+# Search wiki nodes
+./lark doc wiki search "meeting notes"
+./lark doc wiki search "PRD" --space-id 7344964278161604639
+./lark doc wiki search "design" --space-id 7344964278161604639 --node-id ABC123xyz
 ```
 
-Resolve a wiki node token to get the underlying document information. The node_token is from the wiki URL. For example:
-- URL: `https://xxx.larksuite.com/wiki/X8Tawq431ifOYSklP2tlamKsgNh`
-- Node token: `X8Tawq431ifOYSklP2tlamKsgNh`
+Useful flags:
+- `doc wiki list --space-id <id>`: list nodes in a specific space
+- `doc wiki list --parent-node-token <token>`: list children under a specific parent node
+- `doc wiki list --node-token <token>`: convenience mode, auto-resolve `space_id` and list that node's children
+- `doc wiki search --space-id <id>`: filter search to a specific wiki space
+- `doc wiki search --node-id <id>`: search within a node and its children (requires `--space-id`)
 
-Output:
+Example output (`doc wiki resolve <node-token>`):
 ```json
 {
   "node_token": "X8Tawq431ifOYSklP2tlamKsgNh",
@@ -663,46 +681,7 @@ Output:
 
 Use the `obj_token` value with `doc get` to retrieve the document content.
 
-#### Search Wiki
-
-```bash
-# Search all wikis by keyword
-./lark doc wiki-search "meeting notes"
-
-# Filter by wiki space
-./lark doc wiki-search "PRD" --space-id 7344964278161604639
-
-# Search within a specific node and its children
-./lark doc wiki-search "design" --space-id 7344964278161604639 --node-id ABC123xyz
-```
-
-Searches for wiki nodes by keyword. Returns wiki nodes the user has permission to view.
-
-**Note:** Results are limited to 50 items to avoid API rate limits.
-
-Flags:
-- `--space-id`: Filter to a specific wiki space ID
-- `--node-id`: Search within a node and its children (requires `--space-id`)
-
-Output:
-```json
-{
-  "query": "meeting notes",
-  "results": [
-    {
-      "node_id": "BAgPwq6lIi5Nykk0E5fcJeabcef",
-      "obj_token": "AcnMdexrlokOShxe40Fc0Oabcef",
-      "obj_type": "docx",
-      "title": "Weekly Meeting Notes",
-      "url": "https://sample.larksuite.com/wiki/BAgPwq6lIi5Nykk0E5fcJeabcef",
-      "space_id": "7307457194084925443"
-    }
-  ],
-  "count": 1
-}
-```
-
-Use the `obj_token` value with `doc get` to retrieve the document content.
+Legacy commands `doc wiki-search` and `doc wiki-children` are still supported for forward compatibility.
 
 #### Get Document as Markdown
 

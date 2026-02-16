@@ -106,7 +106,7 @@ Output:
 ### Resolve Wiki Node to Document ID
 
 ```bash
-lark doc wiki <node-token>
+lark doc wiki resolve <node-token>
 ```
 
 Resolves a wiki node token to get the underlying document ID. **Required for wiki URLs before fetching content.**
@@ -126,13 +126,20 @@ Output:
 
 Use the `obj_token` value with `doc get` or `doc blocks`.
 
-### List Wiki Node Children
+### List Wiki Spaces and Nodes
 
 ```bash
-lark doc wiki-children <node-token>
+# List accessible wiki spaces
+lark doc wiki spaces
+
+# List top-level nodes in a space
+lark doc wiki list --space-id <space-id>
+
+# List children of a specific node (auto-resolve space)
+lark doc wiki list --node-token <node-token>
 ```
 
-Lists the immediate child nodes of a wiki node. Useful for browsing wiki hierarchies (e.g., listing all PRDs under a PRDs folder).
+Use these commands to browse wiki hierarchy from space -> nodes -> children.
 
 Output:
 ```json
@@ -154,11 +161,15 @@ Output:
 }
 ```
 
-The command automatically resolves the space_id from the node token. Use `obj_token` with `doc get` to read child documents.
+`doc wiki list --node-token` automatically resolves `space_id` from the node token.
+Use `obj_token` with `doc get` to read child documents.
 
 ### Search Wiki Nodes
 
 ```bash
+lark doc wiki search <query> [--space-id <space-id>] [--node-id <node-id>]
+
+# Legacy command (still supported)
 lark doc wiki-search <query> [--space-id <space-id>] [--node-id <node-id>]
 ```
 
@@ -325,7 +336,7 @@ Output:
 | URL Type | Example | How to Get Content |
 |----------|---------|----------------------------|
 | Direct doc | `https://xxx.larksuite.com/docx/ABC123xyz` | Use `ABC123xyz` directly with `doc get` |
-| Wiki | `https://xxx.larksuite.com/wiki/X8Tawq43...` | First run `doc wiki X8Tawq43...` to get `obj_token`, then use that with `doc get` |
+| Wiki | `https://xxx.larksuite.com/wiki/X8Tawq43...` | First run `doc wiki resolve X8Tawq43...` to get `obj_token`, then use that with `doc get` |
 | Spreadsheet | `https://xxx.larksuite.com/sheets/T4mHsr...` | Use `T4mHsr...` with `sheet list` or `sheet read` |
 
 **Important**: Wiki URLs require a two-step process - resolve the node first, then fetch the document.
@@ -335,11 +346,12 @@ Output:
 | Use Case | Command | Why |
 |----------|---------|-----|
 | Search for documents | `doc search` | Find docs by keyword across Drive |
-| Search wiki by keyword | `doc wiki-search` | Find wiki nodes by keyword |
+| Search wiki by keyword | `doc wiki search` | Find wiki nodes by keyword |
 | List folder contents | `doc list [folder-token]` | Browse Drive files and folders |
 | Download a file | `doc download` | Save Drive files locally |
-| Wiki URL | `doc wiki` then `doc get` | Must resolve wiki node first |
-| List wiki sub-pages | `doc wiki-children` | Browse wiki hierarchy |
+| Wiki URL | `doc wiki resolve` then `doc get` | Must resolve wiki node first |
+| List wiki spaces | `doc wiki spaces` | Discover accessible wiki spaces |
+| List wiki sub-pages | `doc wiki list` | Browse wiki hierarchy |
 | Read/summarize content | `doc get` | Markdown is compact (~90KB) |
 | Analyze structure | `doc blocks` | Full block hierarchy |
 | Search for text | `doc get` | Grep-able markdown |
@@ -463,7 +475,7 @@ lark doc blocks <id> | jq '{title, block_count}'
 ### When User Shares a Document URL
 1. Check the URL type:
    - `/docx/` URL: Extract document ID directly
-   - `/wiki/` URL: Run `doc wiki <node-token>` first to get `obj_token`
+   - `/wiki/` URL: Run `doc wiki resolve <node-token>` first to get `obj_token`
 2. Start with outline: `doc get <id> | jq -r '.content' | grep -E '^#{1,6} '`
 3. Fetch full content only if needed for detailed analysis
 

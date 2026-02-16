@@ -18,7 +18,7 @@ The result: AI assistants can interact with Lark using fewer tokens, leaving mor
 
 - **Calendar** - List, create, update, delete events; check availability; find common free time; RSVP
 - **Contacts** - Look up users by ID, search by name, list department members
-- **Documents** - Read documents as markdown, list folders, resolve wiki nodes, get comments
+- **Documents** - Read documents as markdown, list folders, browse wiki spaces/nodes, resolve wiki nodes, get comments
 - **Messages** - Retrieve chat history, download attachments, send messages, add/list/remove reactions
 - **Mail** - Read and search emails via IMAP with local caching
 - **Minutes** - Get meeting recording metadata, export transcripts, download media

@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 )
 
 // GetWikiNode retrieves wiki node information
@@ -21,6 +22,69 @@ func (c *Client) GetWikiNode(nodeToken string) (*WikiNode, error) {
 	}
 
 	return resp.Data.Node, nil
+}
+
+// ListWikiSpaces lists wiki spaces with pagination
+// pageSize: number of items per page (max 50)
+// pageToken: pagination token
+func (c *Client) ListWikiSpaces(pageSize int, pageToken string) ([]WikiSpace, bool, string, error) {
+	params := url.Values{}
+	if pageSize > 0 {
+		params.Set("page_size", strconv.Itoa(pageSize))
+	}
+	if pageToken != "" {
+		params.Set("page_token", pageToken)
+	}
+
+	path := "/wiki/v2/spaces"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+
+	var resp ListWikiSpacesResponse
+	if err := c.Get(path, &resp); err != nil {
+		return nil, false, "", err
+	}
+
+	if resp.Code != 0 {
+		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
+}
+
+// ListWikiNodes lists child nodes in a wiki space with pagination
+// spaceID: the wiki space ID
+// parentNodeToken: optional parent node token (empty means top-level nodes)
+// pageSize: number of items per page (max 50)
+// pageToken: pagination token
+func (c *Client) ListWikiNodes(spaceID, parentNodeToken string, pageSize int, pageToken string) ([]WikiNode, bool, string, error) {
+	params := url.Values{}
+	if parentNodeToken != "" {
+		params.Set("parent_node_token", parentNodeToken)
+	}
+	if pageSize > 0 {
+		params.Set("page_size", strconv.Itoa(pageSize))
+	}
+	if pageToken != "" {
+		params.Set("page_token", pageToken)
+	}
+
+	path := fmt.Sprintf("/wiki/v2/spaces/%s/nodes", url.PathEscape(spaceID))
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+
+	var resp ListWikiChildrenResponse
+	if err := c.Get(path, &resp); err != nil {
+		return nil, false, "", err
+	}
+
+	if resp.Code != 0 {
+		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
 }
 
 // SearchWikiNodes searches wiki nodes by keyword
@@ -60,31 +124,17 @@ func (c *Client) GetWikiNodeChildren(spaceID, parentNodeToken string) ([]WikiNod
 	var pageToken string
 
 	for {
-		params := url.Values{}
-		params.Set("parent_node_token", parentNodeToken)
-		params.Set("page_size", "50")
-		if pageToken != "" {
-			params.Set("page_token", pageToken)
-		}
-
-		path := fmt.Sprintf("/wiki/v2/spaces/%s/nodes?%s",
-			url.PathEscape(spaceID), params.Encode())
-
-		var resp ListWikiChildrenResponse
-		if err := c.Get(path, &resp); err != nil {
+		items, hasMore, nextPageToken, err := c.ListWikiNodes(spaceID, parentNodeToken, 50, pageToken)
+		if err != nil {
 			return nil, err
 		}
 
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
-		}
+		allItems = append(allItems, items...)
 
-		allItems = append(allItems, resp.Data.Items...)
-
-		if !resp.Data.HasMore {
+		if !hasMore {
 			break
 		}
-		pageToken = resp.Data.PageToken
+		pageToken = nextPageToken
 	}
 
 	return allItems, nil
