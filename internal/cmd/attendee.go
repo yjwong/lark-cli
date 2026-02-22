@@ -66,17 +66,31 @@ Examples:
 			})
 		}
 
-		// Add email attendees
+		// Add email attendees (auto-resolve to internal Lark users)
+		var trimmedEmails []string
 		for _, email := range addAttendeeEmails {
 			email = strings.TrimSpace(email)
-			if email == "" {
-				continue
+			if email != "" {
+				trimmedEmails = append(trimmedEmails, email)
 			}
-			attendees = append(attendees, api.Attendee{
-				Type:            "third_party",
-				ThirdPartyEmail: email,
-				IsOptional:      addAttendeeOptional,
-			})
+		}
+		if len(trimmedEmails) > 0 {
+			resolved := resolveEmails(client, trimmedEmails)
+			for _, email := range trimmedEmails {
+				if userID, ok := resolved[email]; ok {
+					attendees = append(attendees, api.Attendee{
+						Type:       "user",
+						UserID:     userID,
+						IsOptional: addAttendeeOptional,
+					})
+				} else {
+					attendees = append(attendees, api.Attendee{
+						Type:            "third_party",
+						ThirdPartyEmail: email,
+						IsOptional:      addAttendeeOptional,
+					})
+				}
+			}
 		}
 
 		// Add user attendees by open_id

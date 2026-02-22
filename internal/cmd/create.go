@@ -170,7 +170,7 @@ Examples:
 
 		// Add explicitly specified attendees
 		if len(createAttendees) > 0 {
-			parsedAttendees, err := parseAttendees(createAttendees)
+			parsedAttendees, err := parseAttendees(client, createAttendees)
 			if err != nil {
 				output.Fatalf("ATTENDEE_ERROR", "Failed to parse attendees: %v", err)
 			}
@@ -216,28 +216,66 @@ func init() {
 	createCmd.MarkFlagRequired("start")
 }
 
-// parseAttendees converts attendee strings to Attendee structs
-func parseAttendees(attendeeStrs []string) ([]api.Attendee, error) {
-	var attendees []api.Attendee
+// parseAttendees converts attendee strings to Attendee structs.
+// It auto-resolves emails to internal Lark users when possible,
+// falling back to third-party (external) attendees.
+func parseAttendees(client *api.Client, attendeeStrs []string) ([]api.Attendee, error) {
+	// Collect all emails for batch lookup
+	var emails []string
 	for _, s := range attendeeStrs {
-		// Format: email:user@example.com or just user@example.com
 		if strings.HasPrefix(s, "email:") {
-			email := strings.TrimPrefix(s, "email:")
-			attendees = append(attendees, api.Attendee{
-				Type:            "third_party",
-				ThirdPartyEmail: email,
-			})
+			emails = append(emails, strings.TrimPrefix(s, "email:"))
 		} else if strings.Contains(s, "@") {
-			// Bare email address
-			attendees = append(attendees, api.Attendee{
-				Type:            "third_party",
-				ThirdPartyEmail: s,
-			})
+			emails = append(emails, s)
 		} else {
 			return nil, fmt.Errorf("unknown attendee format: %s (use email address like user@example.com)", s)
 		}
 	}
+
+	// Batch resolve emails to internal Lark users
+	resolved := resolveEmails(client, emails)
+
+	// Build attendee list using resolved users where possible
+	var attendees []api.Attendee
+	for _, email := range emails {
+		if userID, ok := resolved[email]; ok {
+			attendees = append(attendees, api.Attendee{
+				Type:   "user",
+				UserID: userID,
+			})
+		} else {
+			attendees = append(attendees, api.Attendee{
+				Type:            "third_party",
+				ThirdPartyEmail: email,
+			})
+		}
+	}
 	return attendees, nil
+}
+
+// resolveEmails looks up emails via the contacts API and returns a map
+// of email -> open_id for internal Lark users. Emails that don't resolve
+// are simply omitted from the map.
+func resolveEmails(client *api.Client, emails []string) map[string]string {
+	resolved := make(map[string]string)
+	if len(emails) == 0 {
+		return resolved
+	}
+
+	users, err := client.LookupUsers(api.UserLookupOptions{
+		Emails: emails,
+	})
+	if err != nil {
+		// Lookup failed - fall back to all third-party
+		return resolved
+	}
+
+	for _, u := range users {
+		if u.UserID != "" && u.Email != "" {
+			resolved[u.Email] = u.UserID
+		}
+	}
+	return resolved
 }
 
 // parseHexColor converts a hex color string (e.g., "#9CA2A9") to an int32 RGB value for Lark API
