@@ -190,7 +190,7 @@ lark cal attendee remove <event-id> --self
 lark cal attendee remove <event-id> --id user_xxxxx
 ```
 
-**Tip**: When adding internal Lark users, prefer `--user` over `--email`. Use `contact search` to find the user's open_id first, then add with `--user`. This ensures the attendee shows up properly linked to their Lark profile.
+**Tip**: Just use email addresses with `--attendee` (create) or `--email` (attendee add). The CLI automatically resolves internal Lark users via the contacts API, falling back to third-party for external contacts.
 
 ## Output Formats
 
