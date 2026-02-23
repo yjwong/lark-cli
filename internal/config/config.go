@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -11,6 +12,7 @@ import (
 type Config struct {
 	AppID     string `mapstructure:"app_id"`
 	AppSecret string `mapstructure:"app_secret"`
+	Region    string `mapstructure:"region"`
 	Defaults  struct {
 		Timezone        string `mapstructure:"timezone"`
 		ReminderMinutes int    `mapstructure:"reminder_minutes"`
@@ -60,6 +62,7 @@ func Init() error {
 	viper.AddConfigPath(cfgDir)
 
 	// Set defaults
+	viper.SetDefault("region", "lark")
 	viper.SetDefault("defaults.timezone", "Asia/Singapore")
 	viper.SetDefault("defaults.reminder_minutes", 15)
 	viper.SetDefault("oauth.redirect_port", 9999)
@@ -101,6 +104,19 @@ func GetAppID() string {
 // GetAppSecret returns the app secret from environment
 func GetAppSecret() string {
 	return viper.GetString("app_secret")
+}
+
+// GetRegion returns the API/auth region: lark (default) or feishu
+func GetRegion() string {
+	region := strings.ToLower(strings.TrimSpace(viper.GetString("region")))
+	switch region {
+	case "feishu":
+		return "feishu"
+	case "lark", "":
+		return "lark"
+	default:
+		return "lark"
+	}
 }
 
 // GetTimezone returns the default timezone
