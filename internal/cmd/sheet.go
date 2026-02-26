@@ -188,12 +188,96 @@ func columnIndexToLetter(index int) string {
 	return string(rune('A' + index - 1))
 }
 
+var sheetConditionFormatCmd = &cobra.Command{
+	Use:   "condition-format <spreadsheet_token>",
+	Short: "Apply conditional formatting to a sheet range",
+	Long: `Apply conditional formatting rules to a range in a Lark spreadsheet.
+
+Examples:
+  # Red background for values > 50
+  lark sheet condition-format <token> --sheet abc123 --range "abc123!E2:K100" --operator greaterThan --value 50 --bg-color "#FFcccc"
+
+  # Green background for values <= 50
+  lark sheet condition-format <token> --sheet abc123 --range "abc123!E2:K100" --operator lessThanOrEqual --value 50 --bg-color "#d9f5d6"`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		sheetID, _ := cmd.Flags().GetString("sheet")
+		rangeStr, _ := cmd.Flags().GetString("range")
+		ruleType, _ := cmd.Flags().GetString("rule")
+		operator, _ := cmd.Flags().GetString("operator")
+		value, _ := cmd.Flags().GetString("value")
+		value2, _ := cmd.Flags().GetString("value2")
+		bgColor, _ := cmd.Flags().GetString("bg-color")
+		fgColor, _ := cmd.Flags().GetString("fg-color")
+
+		if sheetID == "" {
+			output.Fatal("MISSING_FLAG", fmt.Errorf("--sheet is required"))
+		}
+		if rangeStr == "" {
+			output.Fatal("MISSING_FLAG", fmt.Errorf("--range is required"))
+		}
+
+		style := api.ConditionFormatStyle{
+			BackColor: bgColor,
+			ForeColor: fgColor,
+		}
+
+		var attrs []api.ConditionFormatAttr
+		if ruleType == "cellIs" {
+			attr := api.ConditionFormatAttr{Operator: operator}
+			if value != "" {
+				attr.Formula = append(attr.Formula, value)
+			}
+			if value2 != "" {
+				attr.Formula = append(attr.Formula, value2)
+			}
+			attrs = append(attrs, attr)
+		}
+
+		formats := []api.SheetConditionFormat{
+			{
+				SheetID: sheetID,
+				ConditionFormat: api.ConditionFormat{
+					Ranges:   []string{rangeStr},
+					RuleType: ruleType,
+					Attrs:    attrs,
+					Style:    style,
+				},
+			},
+		}
+
+		client := api.NewClient()
+		responses, err := client.BatchCreateConditionFormats(token, formats)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputConditionFormat{
+			Success:   true,
+			Responses: responses,
+		}
+		output.JSON(result)
+	},
+}
+
 func init() {
 	// Register subcommands
 	sheetCmd.AddCommand(sheetListCmd)
 	sheetCmd.AddCommand(sheetReadCmd)
+	sheetCmd.AddCommand(sheetConditionFormatCmd)
 
 	// Flags for sheet read
 	sheetReadCmd.Flags().String("sheet", "", "Sheet ID to read from (default: first sheet)")
 	sheetReadCmd.Flags().String("range", "", "Cell range to read (e.g., A1:Z100)")
+
+	// Flags for sheet condition-format
+	sheetConditionFormatCmd.Flags().String("sheet", "", "Sheet ID to apply formatting to (required)")
+	sheetConditionFormatCmd.Flags().String("range", "", "Cell range to format (e.g., abc123!E2:K100) (required)")
+	sheetConditionFormatCmd.Flags().String("rule", "cellIs", "Rule type: cellIs, containsBlanks, notContainsBlanks, duplicateValues, uniqueValues, containsText, timePeriod")
+	sheetConditionFormatCmd.Flags().String("operator", "greaterThan", "Operator for cellIs: equal, notEqual, greaterThan, greaterThanOrEqual, lessThan, lessThanOrEqual, between, notBetween")
+	sheetConditionFormatCmd.Flags().String("value", "", "Threshold value for cellIs")
+	sheetConditionFormatCmd.Flags().String("value2", "", "Second value for between/notBetween operators")
+	sheetConditionFormatCmd.Flags().String("bg-color", "#FFcccc", "Background color in hex (e.g., #FFcccc)")
+	sheetConditionFormatCmd.Flags().String("fg-color", "", "Foreground/text color in hex (optional)")
 }

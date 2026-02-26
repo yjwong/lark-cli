@@ -59,3 +59,17 @@ func (c *Client) GetSheetData(token, rangeStr string) (*SheetValues, error) {
 
 	return resp.Data, nil
 }
+
+// BatchCreateConditionFormats applies conditional formatting rules to sheet ranges
+func (c *Client) BatchCreateConditionFormats(token string, formats []SheetConditionFormat) ([]ConditionFormatResponse, error) {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/condition_formats/batch_create", url.PathEscape(token))
+	req := BatchCreateConditionFormatsRequest{SheetConditionFormats: formats}
+	var resp BatchCreateConditionFormatsResponse
+	if err := c.Post(path, req, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+	return resp.Data.Responses, nil
+}

@@ -1488,3 +1488,60 @@ type OutputBitableRecord struct {
 	RecordID string         `json:"record_id"`
 	Fields   map[string]any `json:"fields"`
 }
+
+// --- Condition Format Types ---
+
+type ConditionFormatFont struct {
+	Bold   bool `json:"bold,omitempty"`
+	Italic bool `json:"italic,omitempty"`
+}
+
+type ConditionFormatStyle struct {
+	Font           *ConditionFormatFont `json:"font,omitempty"`
+	ForeColor      string               `json:"fore_color,omitempty"`
+	BackColor      string               `json:"back_color,omitempty"`
+	TextDecoration int                  `json:"text_decoration,omitempty"`
+}
+
+type ConditionFormatAttr struct {
+	Operator   string   `json:"operator,omitempty"`
+	Formula    []string `json:"formula,omitempty"`
+	Text       string   `json:"text,omitempty"`
+	TimePeriod string   `json:"time_period,omitempty"`
+}
+
+type ConditionFormat struct {
+	Ranges   []string              `json:"ranges"`
+	RuleType string                `json:"rule_type"`
+	Attrs    []ConditionFormatAttr `json:"attrs,omitempty"`
+	Style    ConditionFormatStyle  `json:"style"`
+}
+
+type SheetConditionFormat struct {
+	SheetID         string          `json:"sheet_id"`
+	ConditionFormat ConditionFormat `json:"condition_format"`
+}
+
+type BatchCreateConditionFormatsRequest struct {
+	SheetConditionFormats []SheetConditionFormat `json:"sheet_condition_formats"`
+}
+
+type ConditionFormatResponse struct {
+	CfID    string `json:"cf_id"`
+	ResCode int    `json:"res_code"`
+	ResMsg  string `json:"res_msg"`
+	SheetID string `json:"sheet_id"`
+}
+
+type BatchCreateConditionFormatsResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Responses []ConditionFormatResponse `json:"responses"`
+	} `json:"data"`
+}
+
+type OutputConditionFormat struct {
+	Success   bool                      `json:"success"`
+	Responses []ConditionFormatResponse `json:"responses"`
+}
