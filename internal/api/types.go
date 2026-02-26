@@ -1388,6 +1388,40 @@ type OutputSheetData struct {
 	Values           [][]any `json:"values"`
 }
 
+// --- Spreadsheet Write Types ---
+
+// SetSheetValuesRequest is the request body for PUT /sheets/v2/spreadsheets/:token/values
+type SetSheetValuesRequest struct {
+	ValueRange ValueRange `json:"valueRange"`
+}
+
+// SetSheetValuesData is the response data from setting sheet values
+type SetSheetValuesData struct {
+	SpreadsheetToken string `json:"spreadsheetToken,omitempty"`
+	UpdatedRange     string `json:"updatedRange,omitempty"`
+	UpdatedRows      int    `json:"updatedRows,omitempty"`
+	UpdatedColumns   int    `json:"updatedColumns,omitempty"`
+	UpdatedCells     int    `json:"updatedCells,omitempty"`
+	Revision         int    `json:"revision,omitempty"`
+}
+
+// SetSheetValuesResponse is the response from PUT /sheets/v2/spreadsheets/:token/values
+type SetSheetValuesResponse struct {
+	Code int                 `json:"code"`
+	Msg  string              `json:"msg"`
+	Data *SetSheetValuesData `json:"data,omitempty"`
+}
+
+// OutputSheetWrite is the sheet write response for CLI
+type OutputSheetWrite struct {
+	Success        bool   `json:"success"`
+	UpdatedRange   string `json:"updated_range"`
+	UpdatedRows    int    `json:"updated_rows"`
+	UpdatedColumns int    `json:"updated_columns"`
+	UpdatedCells   int    `json:"updated_cells"`
+	Revision       int    `json:"revision"`
+}
+
 // --- Bitable Types ---
 
 // BitableTable represents a table in a Bitable app
@@ -1487,4 +1521,38 @@ type OutputBitableRecordList struct {
 type OutputBitableRecord struct {
 	RecordID string         `json:"record_id"`
 	Fields   map[string]any `json:"fields"`
+}
+
+// --- Spreadsheet Create Types ---
+
+// CreateSpreadsheetRequest is the request body for POST /sheets/v3/spreadsheets
+type CreateSpreadsheetRequest struct {
+	Title       string `json:"title"`
+	FolderToken string `json:"folder_token,omitempty"`
+}
+
+// SpreadsheetInfo is the spreadsheet info in create response
+type SpreadsheetInfo struct {
+	Title            string `json:"title"`
+	FolderToken      string `json:"folder_token,omitempty"`
+	URL              string `json:"url,omitempty"`
+	SpreadsheetToken string `json:"spreadsheet_token"`
+}
+
+// CreateSpreadsheetResponse is the response from POST /sheets/v3/spreadsheets
+type CreateSpreadsheetResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Spreadsheet *SpreadsheetInfo `json:"spreadsheet,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// OutputSpreadsheetCreate is the create spreadsheet response for CLI
+type OutputSpreadsheetCreate struct {
+	Success          bool   `json:"success"`
+	SpreadsheetToken string `json:"spreadsheet_token"`
+	Title            string `json:"title"`
+	URL              string `json:"url"`
+	FolderToken      string `json:"folder_token,omitempty"`
 }
