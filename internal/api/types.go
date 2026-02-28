@@ -725,7 +725,6 @@ type OutputDocumentCreate struct {
 	DocumentID string `json:"document_id"`
 	RevisionID int    `json:"revision_id"`
 	Title      string `json:"title"`
-	URL        string `json:"url"`
 }
 
 // OutputDocumentAppend is the append blocks response for CLI
