@@ -680,8 +680,8 @@ func makeTextBlock(content string) *api.TextBlock {
 
 // blockTypeForHeadingLevel returns the block type number for a heading level
 func blockTypeForHeadingLevel(level int) int {
-	// Block types: heading1=4, heading2=5, ..., heading9=12
-	return level + 3
+	// Block types: heading1=3, heading2=4, ..., heading9=11
+	return level + 2
 }
 
 var docAppendCmd = &cobra.Command{
@@ -788,21 +788,21 @@ Examples:
 
 			for _, item := range bulletItems {
 				blocks = append(blocks, api.DocumentBlock{
-					BlockType: 10, // bullet
+					BlockType: 12, // bullet
 					Bullet:    makeTextBlock(item),
 				})
 			}
 
 			for _, item := range orderedItems {
 				blocks = append(blocks, api.DocumentBlock{
-					BlockType: 11, // ordered
+					BlockType: 13, // ordered
 					Ordered:   makeTextBlock(item),
 				})
 			}
 
 			if todoContent != "" {
 				blocks = append(blocks, api.DocumentBlock{
-					BlockType: 15, // todo
+					BlockType: 17, // todo
 					TodoBlock: makeTextBlock(todoContent),
 				})
 			}
@@ -838,7 +838,7 @@ Examples:
 
 // codeLanguageHelp returns a string listing code language IDs for the help text
 func codeLanguageHelp() string {
-	return "Common language IDs: 0=PlainText, 1=ABAP, 12=C, 13=C++, 15=C#, 19=CSS, 28=Go, 33=HTML, 36=Java, 37=JavaScript, 40=Kotlin, 49=Python, 54=Ruby, 55=Rust, 60=SQL, 62=Swift, 67=TypeScript"
+	return "Common language IDs: 1=PlainText, 7=Bash, 8=C#, 9=C++, 10=C, 12=CSS, 22=Go, 24=HTML, 28=JSON, 29=Java, 30=JavaScript, 32=Kotlin, 49=Python, 52=Ruby, 53=Rust, 56=SQL, 61=Swift, 63=TypeScript, 67=YAML"
 }
 
 func init() {
