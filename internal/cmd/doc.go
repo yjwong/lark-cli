@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -620,6 +621,226 @@ Examples:
 	},
 }
 
+// --- doc create ---
+
+var docCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new document",
+	Long: `Create a new Lark document.
+
+Creates an empty document with the specified title.
+Optionally specify a folder to create the document in.
+
+Examples:
+  lark doc create --title "My Document"
+  lark doc create --title "Project Plan" --folder fldbcRho46N6...`,
+	Run: func(cmd *cobra.Command, args []string) {
+		title, _ := cmd.Flags().GetString("title")
+		folderToken, _ := cmd.Flags().GetString("folder")
+
+		if title == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--title is required"))
+		}
+
+		client := api.NewClient()
+
+		doc, err := client.CreateDocument(title, folderToken)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		url := fmt.Sprintf("https://open.larksuite.com/docx/%s", doc.DocumentID)
+
+		result := api.OutputDocumentCreate{
+			Success:    true,
+			DocumentID: doc.DocumentID,
+			RevisionID: doc.RevisionID,
+			Title:      doc.Title,
+			URL:        url,
+		}
+
+		output.JSON(result)
+	},
+}
+
+// --- doc append ---
+
+// makeTextBlock creates a TextBlock with a single text run
+func makeTextBlock(content string) *api.TextBlock {
+	return &api.TextBlock{
+		Elements: []api.TextElement{
+			{
+				TextRun: &api.TextRun{
+					Content: content,
+				},
+			},
+		},
+	}
+}
+
+// blockTypeForHeadingLevel returns the block type number for a heading level
+func blockTypeForHeadingLevel(level int) int {
+	// Block types: heading1=4, heading2=5, ..., heading9=12
+	return level + 3
+}
+
+var docAppendCmd = &cobra.Command{
+	Use:   "append <document_id>",
+	Short: "Append blocks to a document",
+	Long: `Append content blocks to a Lark document.
+
+Supports appending various block types: text, headings, code, bullets,
+ordered lists, todos, dividers, and raw JSON blocks.
+
+The document_id is the token from the document URL.
+
+Examples:
+  lark doc append ABC123xyz --text "Hello from CLI"
+  lark doc append ABC123xyz --heading "Section Title" --level 2
+  lark doc append ABC123xyz --code "fmt.Println(\"hello\")" --language 49
+  lark doc append ABC123xyz --bullet "First item" --bullet "Second item"
+  lark doc append ABC123xyz --ordered "Step 1" --ordered "Step 2"
+  lark doc append ABC123xyz --todo "Buy groceries"
+  lark doc append ABC123xyz --divider
+  echo '[{"block_type":2,"text":{"elements":[{"text_run":{"content":"raw"}}]}}]' | lark doc append ABC123xyz --json`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		documentID := args[0]
+		blockID, _ := cmd.Flags().GetString("block-id")
+		textContent, _ := cmd.Flags().GetString("text")
+		headingContent, _ := cmd.Flags().GetString("heading")
+		headingLevel, _ := cmd.Flags().GetInt("level")
+		codeContent, _ := cmd.Flags().GetString("code")
+		codeLanguage, _ := cmd.Flags().GetInt("language")
+		bulletItems, _ := cmd.Flags().GetStringSlice("bullet")
+		orderedItems, _ := cmd.Flags().GetStringSlice("ordered")
+		todoContent, _ := cmd.Flags().GetString("todo")
+		addDivider, _ := cmd.Flags().GetBool("divider")
+		useJSON, _ := cmd.Flags().GetBool("json")
+		index, _ := cmd.Flags().GetInt("index")
+
+		if blockID == "" {
+			blockID = documentID
+		}
+
+		var blocks []api.DocumentBlock
+
+		if useJSON {
+			// Read raw block JSON from stdin
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				output.Fatal("INPUT_ERROR", fmt.Errorf("failed to read stdin: %w", err))
+			}
+			if err := json.Unmarshal(data, &blocks); err != nil {
+				output.Fatal("PARSE_ERROR", fmt.Errorf("invalid block JSON: %w", err))
+			}
+		} else {
+			// Build blocks from flags
+			if textContent != "" {
+				blocks = append(blocks, api.DocumentBlock{
+					BlockType: 2, // text
+					Text:      makeTextBlock(textContent),
+				})
+			}
+
+			if headingContent != "" {
+				if headingLevel < 1 || headingLevel > 9 {
+					headingLevel = 1
+				}
+				block := api.DocumentBlock{
+					BlockType: blockTypeForHeadingLevel(headingLevel),
+				}
+				tb := makeTextBlock(headingContent)
+				// Set the heading field based on level
+				switch headingLevel {
+				case 1:
+					block.Heading1 = tb
+				case 2:
+					block.Heading2 = tb
+				case 3:
+					block.Heading3 = tb
+				case 4:
+					block.Heading4 = tb
+				case 5:
+					block.Heading5 = tb
+				case 6:
+					block.Heading6 = tb
+				case 7:
+					block.Heading7 = tb
+				case 8:
+					block.Heading8 = tb
+				case 9:
+					block.Heading9 = tb
+				}
+				blocks = append(blocks, block)
+			}
+
+			if codeContent != "" {
+				tb := makeTextBlock(codeContent)
+				tb.Style = &api.TextStyle{
+					Language: codeLanguage,
+				}
+				blocks = append(blocks, api.DocumentBlock{
+					BlockType: 14, // code
+					Code:      tb,
+				})
+			}
+
+			for _, item := range bulletItems {
+				blocks = append(blocks, api.DocumentBlock{
+					BlockType: 10, // bullet
+					Bullet:    makeTextBlock(item),
+				})
+			}
+
+			for _, item := range orderedItems {
+				blocks = append(blocks, api.DocumentBlock{
+					BlockType: 11, // ordered
+					Ordered:   makeTextBlock(item),
+				})
+			}
+
+			if todoContent != "" {
+				blocks = append(blocks, api.DocumentBlock{
+					BlockType: 15, // todo
+					TodoBlock: makeTextBlock(todoContent),
+				})
+			}
+
+			if addDivider {
+				blocks = append(blocks, api.DocumentBlock{
+					BlockType: 22, // divider
+					Divider:   &api.DividerBlock{},
+				})
+			}
+		}
+
+		if len(blocks) == 0 {
+			output.Fatal("MISSING_ARG", fmt.Errorf("at least one content flag is required (--text, --heading, --code, --bullet, --ordered, --todo, --divider, or --json)"))
+		}
+
+		client := api.NewClient()
+
+		createdBlocks, revisionID, err := client.CreateDocumentBlocks(documentID, blockID, blocks, index)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputDocumentAppend{
+			Success:            true,
+			DocumentRevisionID: revisionID,
+			Blocks:             createdBlocks,
+		}
+
+		output.JSON(result)
+	},
+}
+
+// codeLanguageHelp returns a string listing code language IDs for the help text
+func codeLanguageHelp() string {
+	return "Common language IDs: 0=PlainText, 1=ABAP, 12=C, 13=C++, 15=C#, 19=CSS, 28=Go, 33=HTML, 36=Java, 37=JavaScript, 40=Kotlin, 49=Python, 54=Ruby, 55=Rust, 60=SQL, 62=Swift, 67=TypeScript"
+}
+
 func init() {
 	// Register subcommands
 	docCmd.AddCommand(docGetCmd)
@@ -632,6 +853,8 @@ func init() {
 	docCmd.AddCommand(docImageCmd)
 	docCmd.AddCommand(docWikiSearchCmd)
 	docCmd.AddCommand(docDownloadCmd)
+	docCmd.AddCommand(docCreateCmd)
+	docCmd.AddCommand(docAppendCmd)
 
 	// Flags for doc wiki-search
 	docWikiSearchCmd.Flags().String("space-id", "", "Filter to specific wiki space ID")
@@ -648,4 +871,22 @@ func init() {
 
 	// Flags for doc download
 	docDownloadCmd.Flags().StringP("output", "o", "", "Output file path (default: original filename)")
+
+	// Flags for doc create
+	docCreateCmd.Flags().String("title", "", "Document title (required)")
+	docCreateCmd.Flags().String("folder", "", "Folder token to create document in (default: root)")
+
+	// Flags for doc append
+	docAppendCmd.Flags().String("block-id", "", "Parent block ID (default: document root)")
+	docAppendCmd.Flags().String("text", "", "Append a text block")
+	docAppendCmd.Flags().String("heading", "", "Append a heading block")
+	docAppendCmd.Flags().Int("level", 1, "Heading level 1-9 (used with --heading)")
+	docAppendCmd.Flags().String("code", "", "Append a code block")
+	docAppendCmd.Flags().Int("language", 0, "Code language ID (used with --code). "+codeLanguageHelp())
+	docAppendCmd.Flags().StringSlice("bullet", nil, "Append bullet list items (repeatable)")
+	docAppendCmd.Flags().StringSlice("ordered", nil, "Append ordered list items (repeatable)")
+	docAppendCmd.Flags().String("todo", "", "Append a todo item")
+	docAppendCmd.Flags().Bool("divider", false, "Append a divider")
+	docAppendCmd.Flags().Bool("json", false, "Read raw block JSON from stdin")
+	docAppendCmd.Flags().Int("index", -1, "Insertion position (-1=end, 0=beginning)")
 }
