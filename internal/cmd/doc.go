@@ -649,14 +649,11 @@ Examples:
 			output.Fatal("API_ERROR", err)
 		}
 
-		url := fmt.Sprintf("https://open.larksuite.com/docx/%s", doc.DocumentID)
-
 		result := api.OutputDocumentCreate{
 			Success:    true,
 			DocumentID: doc.DocumentID,
 			RevisionID: doc.RevisionID,
 			Title:      doc.Title,
-			URL:        url,
 		}
 
 		output.JSON(result)
