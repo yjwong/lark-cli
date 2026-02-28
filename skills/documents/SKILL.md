@@ -1,6 +1,6 @@
 ---
 name: documents
-description: Query and retrieve Lark document content - get documents as markdown or structured blocks, list folder contents. Use when user asks about a Lark doc, wants to read a document, list files in a folder, or mentions a document URL/ID.
+description: Read and write Lark documents - get content as markdown or blocks, create new documents, append content (text, headings, lists, code), list folders. Use when user asks about a Lark doc, wants to read/create/edit a document, or mentions a document URL/ID.
 ---
 
 # Lark Documents Skill
@@ -264,6 +264,77 @@ Fields:
 - `is_solved`: whether the comment thread has been resolved
 - `quote`: the highlighted text from the document (for inline comments)
 
+### Create a New Document
+
+```bash
+lark doc create --title "My Document" [--folder <folder-token>]
+```
+
+Creates a new empty Lark document. Optionally specify a folder to create it in.
+
+Options:
+- `--title`: Document title (required)
+- `--folder`: Folder token to create the document in (default: root cloud space)
+
+Output:
+```json
+{
+  "success": true,
+  "document_id": "BKlmdClegoCan5x5Rzbl73QQgEC",
+  "revision_id": 1,
+  "title": "My Document"
+}
+```
+
+### Append Content to a Document
+
+```bash
+lark doc append <document-id> [flags]
+```
+
+Appends content blocks to an existing document. Supports multiple block types.
+
+Content flags (at least one required):
+- `--text "content"`: Append a text paragraph
+- `--heading "content" --level <1-9>`: Append a heading (default level 1)
+- `--code "content" --language <id>`: Append a code block
+- `--bullet "item"`: Append bullet list items (repeatable)
+- `--ordered "item"`: Append ordered list items (repeatable)
+- `--todo "item"`: Append a todo/checkbox item
+- `--divider`: Append a horizontal divider
+- `--json`: Read raw block JSON from stdin
+
+Other flags:
+- `--block-id`: Parent block ID to append under (default: document root)
+- `--index`: Insertion position (-1=end, 0=beginning)
+
+Examples:
+```bash
+# Add a heading and text
+lark doc append ABC123xyz --heading "Section Title" --level 2
+lark doc append ABC123xyz --text "Hello from CLI"
+
+# Add a bullet list
+lark doc append ABC123xyz --bullet "First item" --bullet "Second item"
+
+# Add a code block (Python)
+lark doc append ABC123xyz --code "print('hello')" --language 49
+
+# Add raw blocks via JSON stdin
+echo '[{"block_type":2,"text":{"elements":[{"text_run":{"content":"raw"}}]}}]' | lark doc append ABC123xyz --json
+```
+
+Common code language IDs: 1=PlainText, 7=Bash, 22=Go, 29=Java, 30=JavaScript, 49=Python, 53=Rust, 56=SQL, 63=TypeScript, 67=YAML
+
+Output:
+```json
+{
+  "success": true,
+  "document_revision_id": 5,
+  "blocks": [...]
+}
+```
+
 ## Spreadsheet Commands
 
 ### List Sheets in a Spreadsheet
@@ -340,6 +411,8 @@ Output:
 | Download a file | `doc download` | Save Drive files locally |
 | Wiki URL | `doc wiki` then `doc get` | Must resolve wiki node first |
 | List wiki sub-pages | `doc wiki-children` | Browse wiki hierarchy |
+| Create a new document | `doc create` | Creates empty doc with title |
+| Append content to doc | `doc append` | Add text, headings, lists, code, etc. |
 | Read/summarize content | `doc get` | Markdown is compact (~90KB) |
 | Analyze structure | `doc blocks` | Full block hierarchy |
 | Search for text | `doc get` | Grep-able markdown |
