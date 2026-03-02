@@ -86,6 +86,85 @@ func (c *Client) SetSheetData(token string, sheetRange string, values [][]any) (
 	return resp.Data, nil
 }
 
+// SetSheetColumnWidths resizes columns in a sheet. widths is a map of 0-based column index to pixel width.
+func (c *Client) SetSheetColumnWidths(token, sheetID string, widths map[int]int) error {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/dimension_range", url.PathEscape(token))
+
+	for colIndex, pixelSize := range widths {
+		req := SheetDimensionRangeRequest{
+			Dimension: SheetDimension{
+				SheetID:        sheetID,
+				MajorDimension: "COLUMNS",
+				StartIndex:     colIndex + 1, // API is 1-based
+				EndIndex:       colIndex + 2,
+			},
+			DimensionProperties: SheetDimensionProperties{
+				FixedSize: pixelSize,
+			},
+		}
+		var resp SheetDimensionRangeResponse
+		if err := c.Put(path, req, &resp); err != nil {
+			return fmt.Errorf("column %d: %w", colIndex, err)
+		}
+		if resp.Code != 0 {
+			return fmt.Errorf("column %d: API error %d: %s", colIndex, resp.Code, resp.Msg)
+		}
+	}
+	return nil
+}
+
+// SetSheetStyleBold applies bold formatting to a range in a sheet.
+func (c *Client) SetSheetStyleBold(token, sheetID, rangeSpec string) error {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/styles_batch_update", url.PathEscape(token))
+
+	fullRange := sheetID + "!" + rangeSpec
+	req := SheetStyleBatchUpdateRequest{
+		Data: []SheetStyleItem{
+			{
+				Ranges: []string{fullRange},
+				Style:  SheetStyle{Font: &SheetStyleFont{Bold: true}},
+			},
+		},
+	}
+
+	var resp SheetStyleBatchUpdateResponse
+	if err := c.Put(path, req, &resp); err != nil {
+		return err
+	}
+	if resp.Code != 0 {
+		return fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+	return nil
+}
+
+// AddSheetTab adds a new sheet tab to a spreadsheet.
+func (c *Client) AddSheetTab(token, title string, index int) (*OutputSheetAddTab, error) {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/sheets_batch_update", url.PathEscape(token))
+
+	item := AddSheetRequestItem{}
+	item.AddSheet.Properties = AddSheetProperties{Title: title, Index: index}
+	req := AddSheetBatchRequest{
+		Requests: []AddSheetRequestItem{item},
+	}
+
+	var resp AddSheetBatchResponse
+	if err := c.Post(path, req, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	result := &OutputSheetAddTab{Success: true, Title: title, Index: index}
+	if len(resp.Data.Replies) > 0 {
+		props := resp.Data.Replies[0].AddSheet.Properties
+		result.SheetID = props.SheetID
+		result.Title = props.Title
+		result.Index = props.Index
+	}
+	return result, nil
+}
+
 // CreateSpreadsheet creates a new spreadsheet
 // title: the spreadsheet title
 // folderToken: optional parent folder token (empty = root)

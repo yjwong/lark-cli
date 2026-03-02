@@ -1613,3 +1613,96 @@ type OutputSpreadsheetCreate struct {
 	URL              string `json:"url"`
 	FolderToken      string `json:"folder_token,omitempty"`
 }
+
+// --- Sheet Style Types ---
+
+type SheetStyleFont struct {
+	Bold bool `json:"bold,omitempty"`
+}
+
+type SheetStyle struct {
+	Font *SheetStyleFont `json:"font,omitempty"`
+}
+
+type SheetStyleItem struct {
+	Ranges []string   `json:"ranges"`
+	Style  SheetStyle `json:"style"`
+}
+
+type SheetStyleBatchUpdateRequest struct {
+	Data []SheetStyleItem `json:"data"`
+}
+
+type SheetStyleBatchUpdateResponse struct {
+	BaseResponse
+}
+
+type OutputSheetStyle struct {
+	Success bool `json:"success"`
+}
+
+// --- Sheet Dimension (Resize) Types ---
+
+type SheetDimension struct {
+	SheetID        string `json:"sheetId"`
+	MajorDimension string `json:"majorDimension"`
+	StartIndex     int    `json:"startIndex"`
+	EndIndex       int    `json:"endIndex"`
+}
+
+type SheetDimensionProperties struct {
+	FixedSize int `json:"fixedSize"`
+}
+
+type SheetDimensionRangeRequest struct {
+	Dimension            SheetDimension           `json:"dimension"`
+	DimensionProperties  SheetDimensionProperties `json:"dimensionProperties"`
+}
+
+type SheetDimensionRangeResponse struct {
+	BaseResponse
+}
+
+type OutputSheetResize struct {
+	Success    bool `json:"success"`
+	ColumnsSet int  `json:"columns_set"`
+}
+
+// --- Add Sheet Tab Types ---
+
+type AddSheetProperties struct {
+	Title string `json:"title"`
+	Index int    `json:"index"`
+}
+
+type AddSheetRequestItem struct {
+	AddSheet struct {
+		Properties AddSheetProperties `json:"properties"`
+	} `json:"addSheet"`
+}
+
+type AddSheetBatchRequest struct {
+	Requests []AddSheetRequestItem `json:"requests"`
+}
+
+type AddSheetBatchResponse struct {
+	BaseResponse
+	Data struct {
+		Replies []struct {
+			AddSheet struct {
+				Properties struct {
+					SheetID string `json:"sheetId"`
+					Title   string `json:"title"`
+					Index   int    `json:"index"`
+				} `json:"properties"`
+			} `json:"addSheet"`
+		} `json:"replies"`
+	} `json:"data,omitempty"`
+}
+
+type OutputSheetAddTab struct {
+	Success bool   `json:"success"`
+	SheetID string `json:"sheet_id"`
+	Title   string `json:"title"`
+	Index   int    `json:"index"`
+}
