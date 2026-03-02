@@ -323,12 +323,77 @@ Examples:
 	},
 }
 
+// --- sheet download ---
+
+var sheetDownloadCmd = &cobra.Command{
+	Use:   "download <file_token>",
+	Short: "Download an attachment from a spreadsheet cell",
+	Long: `Download a file attachment embedded in a Lark spreadsheet cell.
+
+The file_token is obtained from 'sheet read' output. When a cell contains
+an attachment, it appears as a structured object with type "attachment"
+and a "fileToken" field.
+
+You must specify the spreadsheet token with --spreadsheet so the API
+can authenticate the download.
+
+Examples:
+  lark sheet download JwhmbXFVeoeIkixnmMKlguhzgLe --spreadsheet WgKQsHcLDhfUM9tqo11lXPYLghh -o contract.pdf
+  lark sheet download JwhmbXFVeoeIkixnmMKlguhzgLe --spreadsheet WgKQsHcLDhfUM9tqo11lXPYLghh -o ~/Downloads/report.pdf`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		fileToken := args[0]
+		outputPath, _ := cmd.Flags().GetString("output")
+		spreadsheetToken, _ := cmd.Flags().GetString("spreadsheet")
+
+		if outputPath == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--output/-o flag is required"))
+		}
+		if spreadsheetToken == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--spreadsheet flag is required"))
+		}
+
+		client := api.NewClient()
+
+		reader, contentType, err := client.DownloadMedia(fileToken, spreadsheetToken)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+		defer reader.Close()
+
+		file, err := os.Create(outputPath)
+		if err != nil {
+			output.Fatal("FILE_ERROR", err)
+		}
+		defer file.Close()
+
+		written, err := io.Copy(file, reader)
+		if err != nil {
+			output.Fatal("IO_ERROR", err)
+		}
+
+		result := struct {
+			FileToken      string `json:"file_token"`
+			Filename       string `json:"filename"`
+			ContentType    string `json:"content_type"`
+			Size           int64  `json:"size"`
+		}{
+			FileToken:   fileToken,
+			Filename:    outputPath,
+			ContentType: contentType,
+			Size:        written,
+		}
+		output.JSON(result)
+	},
+}
+
 func init() {
 	// Register subcommands
 	sheetCmd.AddCommand(sheetListCmd)
 	sheetCmd.AddCommand(sheetReadCmd)
 	sheetCmd.AddCommand(sheetWriteCmd)
 	sheetCmd.AddCommand(sheetCreateCmd)
+	sheetCmd.AddCommand(sheetDownloadCmd)
 
 	// Flags for sheet read
 	sheetReadCmd.Flags().String("sheet", "", "Sheet ID to read from (default: first sheet)")
@@ -342,4 +407,8 @@ func init() {
 	// Flags for sheet create
 	sheetCreateCmd.Flags().String("title", "", "Spreadsheet title (required)")
 	sheetCreateCmd.Flags().String("folder", "", "Folder token to create the spreadsheet in (default: root)")
+
+	// Flags for sheet download
+	sheetDownloadCmd.Flags().StringP("output", "o", "", "Output file path (required)")
+	sheetDownloadCmd.Flags().String("spreadsheet", "", "Spreadsheet token the attachment belongs to (required)")
 }
