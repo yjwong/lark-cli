@@ -1706,3 +1706,76 @@ type OutputSheetAddTab struct {
 	Title   string `json:"title"`
 	Index   int    `json:"index"`
 }
+
+// --- Task Types ---
+
+// Task represents a Lark task
+type Task struct {
+	GUID        string       `json:"guid,omitempty"`
+	Summary     string       `json:"summary,omitempty"`
+	Description string       `json:"description,omitempty"`
+	Due         *TaskDue     `json:"due,omitempty"`
+	Creator     *TaskMember  `json:"creator,omitempty"`
+	Members     []TaskMember `json:"members,omitempty"`
+	CompletedAt string       `json:"completed_at,omitempty"`
+	CreatedAt   string       `json:"created_at,omitempty"`
+	UpdatedAt   string       `json:"updated_at,omitempty"`
+	Status      string       `json:"status,omitempty"`
+	Mode        int          `json:"mode,omitempty"`
+	Source      int          `json:"source,omitempty"`
+}
+
+// TaskDue represents a task due date
+type TaskDue struct {
+	Timestamp string `json:"timestamp,omitempty"`
+	IsAllDay  bool   `json:"is_all_day,omitempty"`
+}
+
+// TaskMember represents a task member (creator, assignee, etc.)
+type TaskMember struct {
+	ID   string `json:"id,omitempty"`
+	Type string `json:"type,omitempty"`
+	Role string `json:"role,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// TaskListResponse is the API response for listing tasks
+type TaskListResponse struct {
+	BaseResponse
+	Data struct {
+		HasMore   bool   `json:"has_more"`
+		PageToken string `json:"page_token,omitempty"`
+		Items     []Task `json:"items,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// TaskResponse is the API response for getting a single task
+type TaskResponse struct {
+	BaseResponse
+	Data struct {
+		Task *Task `json:"task,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// --- Task CLI Output Types ---
+
+// OutputTaskList is the list tasks response for CLI
+type OutputTaskList struct {
+	Tasks   []OutputTask `json:"tasks"`
+	Count   int          `json:"count"`
+	HasMore bool         `json:"has_more"`
+}
+
+// OutputTask is the simplified task format for CLI output
+type OutputTask struct {
+	GUID        string `json:"guid"`
+	Summary     string `json:"summary"`
+	Description string `json:"description,omitempty"`
+	DueDate     string `json:"due_date,omitempty"`
+	IsAllDay    bool   `json:"is_all_day,omitempty"`
+	Status      string `json:"status"`
+	CreatorID   string `json:"creator_id,omitempty"`
+	CreatorName string `json:"creator_name,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+}
