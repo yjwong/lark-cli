@@ -1,10 +1,18 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
+	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
+
+	"github.com/yjwong/lark-cli/internal/auth"
 )
 
 // GetDocument retrieves document metadata
@@ -247,6 +255,87 @@ func (c *Client) DownloadDriveFile(fileToken string) (io.ReadCloser, string, err
 func (c *Client) DownloadDriveFileWithTenant(fileToken string) (io.ReadCloser, string, error) {
 	path := fmt.Sprintf("/drive/v1/files/%s/download", url.PathEscape(fileToken))
 	return c.DownloadWithTenantToken(path)
+}
+
+// UploadDriveFile uploads a file to Lark Drive using the upload_all API
+// filePath: local file path
+// parentToken: folder token to upload into (empty for root)
+// parentType: "explorer" for Drive folder (default)
+// Returns the file token of the uploaded file
+func (c *Client) UploadDriveFile(filePath, parentToken, parentType string) (string, error) {
+	if err := auth.EnsureValidToken(); err != nil {
+		return "", err
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	if stat.Size() > 20*1024*1024 {
+		return "", fmt.Errorf("file size %d exceeds 20MB limit", stat.Size())
+	}
+
+	if parentType == "" {
+		parentType = "explorer"
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	_ = writer.WriteField("file_name", filepath.Base(filePath))
+	_ = writer.WriteField("parent_type", parentType)
+	if parentToken != "" {
+		_ = writer.WriteField("parent_node", parentToken)
+	}
+	_ = writer.WriteField("size", strconv.FormatInt(stat.Size(), 10))
+
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	if err != nil {
+		return "", fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err = io.Copy(part, file); err != nil {
+		return "", fmt.Errorf("failed to copy file data: %w", err)
+	}
+	writer.Close()
+
+	url := baseURL + "/drive/v1/files/upload_all"
+	req, err := http.NewRequest("POST", url, &body)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token := auth.GetTokenStore().GetAccessToken()
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var uploadResp UploadDriveFileResponse
+	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if uploadResp.Code != 0 {
+		return "", fmt.Errorf("API error %d: %s", uploadResp.Code, uploadResp.Msg)
+	}
+
+	return uploadResp.Data.FileToken, nil
 }
 
 // SearchDocuments searches for documents using the Lark Docs API

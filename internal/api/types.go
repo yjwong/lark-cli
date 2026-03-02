@@ -1613,3 +1613,187 @@ type OutputSpreadsheetCreate struct {
 	URL              string `json:"url"`
 	FolderToken      string `json:"folder_token,omitempty"`
 }
+
+// --- Sheet Style Types ---
+
+type SheetStyleFont struct {
+	Bold bool `json:"bold,omitempty"`
+}
+
+type SheetStyle struct {
+	Font *SheetStyleFont `json:"font,omitempty"`
+}
+
+type SheetStyleItem struct {
+	Ranges []string   `json:"ranges"`
+	Style  SheetStyle `json:"style"`
+}
+
+type SheetStyleBatchUpdateRequest struct {
+	Data []SheetStyleItem `json:"data"`
+}
+
+type SheetStyleBatchUpdateResponse struct {
+	BaseResponse
+}
+
+type OutputSheetStyle struct {
+	Success bool `json:"success"`
+}
+
+// --- Sheet Dimension (Resize) Types ---
+
+type SheetDimension struct {
+	SheetID        string `json:"sheetId"`
+	MajorDimension string `json:"majorDimension"`
+	StartIndex     int    `json:"startIndex"`
+	EndIndex       int    `json:"endIndex"`
+}
+
+type SheetDimensionProperties struct {
+	FixedSize int `json:"fixedSize"`
+}
+
+type SheetDimensionRangeRequest struct {
+	Dimension            SheetDimension           `json:"dimension"`
+	DimensionProperties  SheetDimensionProperties `json:"dimensionProperties"`
+}
+
+type SheetDimensionRangeResponse struct {
+	BaseResponse
+}
+
+type OutputSheetResize struct {
+	Success    bool `json:"success"`
+	ColumnsSet int  `json:"columns_set"`
+}
+
+// --- Add Sheet Tab Types ---
+
+type AddSheetProperties struct {
+	Title string `json:"title"`
+	Index int    `json:"index"`
+}
+
+type AddSheetRequestItem struct {
+	AddSheet struct {
+		Properties AddSheetProperties `json:"properties"`
+	} `json:"addSheet"`
+}
+
+type AddSheetBatchRequest struct {
+	Requests []AddSheetRequestItem `json:"requests"`
+}
+
+type AddSheetBatchResponse struct {
+	BaseResponse
+	Data struct {
+		Replies []struct {
+			AddSheet struct {
+				Properties struct {
+					SheetID string `json:"sheetId"`
+					Title   string `json:"title"`
+					Index   int    `json:"index"`
+				} `json:"properties"`
+			} `json:"addSheet"`
+		} `json:"replies"`
+	} `json:"data,omitempty"`
+}
+
+type OutputSheetAddTab struct {
+	Success bool   `json:"success"`
+	SheetID string `json:"sheet_id"`
+	Title   string `json:"title"`
+	Index   int    `json:"index"`
+}
+
+// --- Task Types ---
+
+// Task represents a Lark task
+type Task struct {
+	GUID        string       `json:"guid,omitempty"`
+	Summary     string       `json:"summary,omitempty"`
+	Description string       `json:"description,omitempty"`
+	Due         *TaskDue     `json:"due,omitempty"`
+	Creator     *TaskMember  `json:"creator,omitempty"`
+	Members     []TaskMember `json:"members,omitempty"`
+	CompletedAt string       `json:"completed_at,omitempty"`
+	CreatedAt   string       `json:"created_at,omitempty"`
+	UpdatedAt   string       `json:"updated_at,omitempty"`
+	Status      string       `json:"status,omitempty"`
+	Mode        int          `json:"mode,omitempty"`
+	Source      int          `json:"source,omitempty"`
+}
+
+// TaskDue represents a task due date
+type TaskDue struct {
+	Timestamp string `json:"timestamp,omitempty"`
+	IsAllDay  bool   `json:"is_all_day,omitempty"`
+}
+
+// TaskMember represents a task member (creator, assignee, etc.)
+type TaskMember struct {
+	ID   string `json:"id,omitempty"`
+	Type string `json:"type,omitempty"`
+	Role string `json:"role,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// TaskListResponse is the API response for listing tasks
+type TaskListResponse struct {
+	BaseResponse
+	Data struct {
+		HasMore   bool   `json:"has_more"`
+		PageToken string `json:"page_token,omitempty"`
+		Items     []Task `json:"items,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// TaskResponse is the API response for getting a single task
+type TaskResponse struct {
+	BaseResponse
+	Data struct {
+		Task *Task `json:"task,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// --- Task CLI Output Types ---
+
+// OutputTaskList is the list tasks response for CLI
+type OutputTaskList struct {
+	Tasks   []OutputTask `json:"tasks"`
+	Count   int          `json:"count"`
+	HasMore bool         `json:"has_more"`
+}
+
+// OutputTask is the simplified task format for CLI output
+type OutputTask struct {
+	GUID        string `json:"guid"`
+	Summary     string `json:"summary"`
+	Description string `json:"description,omitempty"`
+	DueDate     string `json:"due_date,omitempty"`
+	IsAllDay    bool   `json:"is_all_day,omitempty"`
+	Status      string `json:"status"`
+	CreatorID   string `json:"creator_id,omitempty"`
+	CreatorName string `json:"creator_name,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+}
+
+// --- Drive Upload Types ---
+
+// UploadDriveFileResponse is the API response for uploading a file to Drive
+type UploadDriveFileResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		FileToken string `json:"file_token"`
+	} `json:"data"`
+}
+
+// OutputDriveUpload is the CLI output for a drive file upload
+type OutputDriveUpload struct {
+	FileToken string `json:"file_token"`
+	FileName  string `json:"file_name"`
+	Size      int64  `json:"size"`
+}

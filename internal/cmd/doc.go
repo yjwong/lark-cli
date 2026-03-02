@@ -833,6 +833,46 @@ Examples:
 	},
 }
 
+// --- doc upload ---
+
+var docUploadCmd = &cobra.Command{
+	Use:   "upload <file_path>",
+	Short: "Upload a file to Lark Drive",
+	Long: `Upload a local file to Lark Drive (max 20MB).
+
+Optionally specify a folder to upload into using --folder.
+
+Examples:
+  lark doc upload report.pdf
+  lark doc upload data.csv --folder fldbcRho46N6...`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		filePath := args[0]
+		folderToken, _ := cmd.Flags().GetString("folder")
+
+		// Verify file exists
+		info, err := os.Stat(filePath)
+		if err != nil {
+			output.Fatal("FILE_ERROR", err)
+		}
+
+		client := api.NewClient()
+
+		fileToken, err := client.UploadDriveFile(filePath, folderToken, "explorer")
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputDriveUpload{
+			FileToken: fileToken,
+			FileName:  info.Name(),
+			Size:      info.Size(),
+		}
+
+		output.JSON(result)
+	},
+}
+
 // codeLanguageHelp returns a string listing code language IDs for the help text
 func codeLanguageHelp() string {
 	return "Common language IDs: 1=PlainText, 7=Bash, 8=C#, 9=C++, 10=C, 12=CSS, 22=Go, 24=HTML, 28=JSON, 29=Java, 30=JavaScript, 32=Kotlin, 49=Python, 52=Ruby, 53=Rust, 56=SQL, 61=Swift, 63=TypeScript, 67=YAML"
@@ -852,6 +892,10 @@ func init() {
 	docCmd.AddCommand(docDownloadCmd)
 	docCmd.AddCommand(docCreateCmd)
 	docCmd.AddCommand(docAppendCmd)
+	docCmd.AddCommand(docUploadCmd)
+
+	// Flags for doc upload
+	docUploadCmd.Flags().String("folder", "", "Folder token to upload into (default: root)")
 
 	// Flags for doc wiki-search
 	docWikiSearchCmd.Flags().String("space-id", "", "Filter to specific wiki space ID")
