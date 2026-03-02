@@ -1779,3 +1779,21 @@ type OutputTask struct {
 	CompletedAt string `json:"completed_at,omitempty"`
 	CreatedAt   string `json:"created_at,omitempty"`
 }
+
+// --- Drive Upload Types ---
+
+// UploadDriveFileResponse is the API response for uploading a file to Drive
+type UploadDriveFileResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		FileToken string `json:"file_token"`
+	} `json:"data"`
+}
+
+// OutputDriveUpload is the CLI output for a drive file upload
+type OutputDriveUpload struct {
+	FileToken string `json:"file_token"`
+	FileName  string `json:"file_name"`
+	Size      int64  `json:"size"`
+}

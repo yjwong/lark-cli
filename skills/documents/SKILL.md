@@ -80,6 +80,26 @@ Item types: `doc`, `docx`, `sheet`, `bitable`, `mindnote`, `file`, `folder`, `sh
 
 For shortcuts, includes `shortcut_info` with `target_type` and `target_token`.
 
+### Upload File to Drive
+
+```bash
+lark doc upload <file_path> [--folder <folder_token>]
+```
+
+Uploads a local file to Lark Drive (max 20MB). Optionally specify a folder token to upload into.
+
+Options:
+- `--folder`: Folder token to upload into (default: root cloud space)
+
+Output:
+```json
+{
+  "file_token": "HjItbLxidogQ7BxQfbDlENvLg4f",
+  "file_name": "report.pdf",
+  "size": 1048576
+}
+```
+
 ### Download File from Drive
 
 ```bash
