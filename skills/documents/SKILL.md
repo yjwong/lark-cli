@@ -1,6 +1,6 @@
 ---
 name: documents
-description: Read and write Lark documents - get content as markdown or blocks, create new documents, append content (text, headings, lists, code), list folders. Use when user asks about a Lark doc, wants to read/create/edit a document, or mentions a document URL/ID.
+description: Read and write Lark documents - get content as markdown or blocks, create new documents, append content (text, headings, lists, code), download images, list folders. Use when user asks about a Lark doc, wants to read/create/edit a document, or mentions a document URL/ID.
 ---
 
 # Lark Documents Skill
@@ -335,61 +335,28 @@ Output:
 }
 ```
 
-## Spreadsheet Commands
-
-### List Sheets in a Spreadsheet
+### Download Image from Document
 
 ```bash
-lark sheet list <spreadsheet_token>
+lark doc image <image_token> --doc <document-id> [-o <output_path>]
 ```
 
-Lists all sheets (tabs) within a Lark spreadsheet.
-
-Output:
-```json
-{
-  "spreadsheet_token": "T4mHsrFyzhXrj0tVzRslUGx8gkA",
-  "sheets": [
-    {
-      "sheet_id": "abc123",
-      "title": "Sheet1",
-      "index": 0,
-      "row_count": 100,
-      "column_count": 10
-    }
-  ],
-  "count": 1
-}
-```
-
-### Read Sheet Data
-
-```bash
-lark sheet read <spreadsheet_token> [--sheet <sheet_id>] [--range A1:Z100]
-```
-
-Reads cell values from a Lark spreadsheet.
+Downloads an image from a Lark document. The image token is obtained from `doc blocks` output for image blocks (block_type 27).
 
 Options:
-- `--sheet`: Sheet ID to read from (default: first sheet by index)
-- `--range`: Cell range to read (e.g., `A1:Z100`). Default: all data up to 1000 rows
+- `-d, --doc`: Document ID that contains the image (required for authentication)
+- `-o, --output`: Output file path (default: stdout - binary data)
 
-Output:
-```json
-{
-  "spreadsheet_token": "T4mHsrFyzhXrj0tVzRslUGx8gkA",
-  "sheet_id": "abc123",
-  "range": "abc123!A1:D10",
-  "row_count": 10,
-  "column_count": 4,
-  "values": [
-    ["Header1", "Header2", "Header3", "Header4"],
-    ["Value1", "Value2", 123, true]
-  ]
-}
+Examples:
+```bash
+# Save image to file
+lark doc image K1TQbpmDuokIq3xq1WVl9J7ygkc --doc ABC123xyz -o image.png
+
+# Pipe to stdout (e.g., for piping to another command)
+lark doc image K1TQbpmDuokIq3xq1WVl9J7ygkc --doc ABC123xyz > image.png
 ```
 
-**Note:** Cell values preserve their types (string, number, boolean). Empty cells may be omitted from rows.
+**Workflow:** Use `doc blocks` to find image blocks (block_type 27), extract the image token from the block data, then download with this command.
 
 ## Extracting IDs from URLs
 
@@ -418,8 +385,7 @@ Output:
 | Search for text | `doc get` | Grep-able markdown |
 | Count elements | `doc blocks` | Block types enumerated |
 | Read comments/feedback | `doc comments` | Get all comments and replies |
-| List sheets in spreadsheet | `sheet list` | See all tabs and their sizes |
-| Read spreadsheet data | `sheet read` | Get cell values as JSON |
+| Download image from doc | `doc image` | Requires image token from `doc blocks` |
 
 **Default to `doc get`** - it's 2-3x smaller and sufficient for most tasks.
 

@@ -100,6 +100,8 @@ lark cal update <event-id> --visibility public
 
 Available flags: `--summary`, `--description`, `--start`, `--end`, `--location`, `--color`, `--visibility`, `--attendee-ability`, `--no-notify`
 
+- `--no-notify` - Don't send notifications to attendees about the update
+
 Visibility options: `default`, `public`, or `private`
 
 Note: Use `--start` and `--end` together to reschedule. There is no `--duration` flag.
