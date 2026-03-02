@@ -92,7 +92,7 @@ Output:
 ### Write Cell Values
 
 ```bash
-lark sheet write <spreadsheet_token> [--sheet <sheet_id>] [--range <A1:B2>] [--values '<JSON>']
+lark sheet write <spreadsheet_token> [--sheet <sheet_id>] [--range <A1:B2>] [--values '<JSON>'] [--auto-type]
 ```
 
 Writes cell values to a Lark spreadsheet. Values are provided as a JSON array of arrays (rows of cells).
@@ -101,11 +101,20 @@ Options:
 - `--sheet`: Sheet ID to write to (default: first sheet)
 - `--range`: Target range in A1 notation (default: A1)
 - `--values`: JSON array of arrays, e.g. `'[["a","b"],["c","d"]]'`. Can also be piped via stdin.
+- `--auto-type`: Auto-detect and convert string values to proper types:
+  - Date strings (`YYYY-MM-DD`) become Excel serial date numbers (for use with `--format "yyyy-MM-dd"`)
+  - Integer strings become numbers
+  - Float strings become numbers
+
+**Important:** Lark Sheets stores dates as serial numbers (days since 1899-12-30). To display dates correctly, write with `--auto-type` then apply a date format with `sheet style --format "yyyy-MM-dd"`.
 
 Examples:
 ```bash
 # Write 2x2 data starting at A1
 lark sheet write T4mHsrFyzhXrj0tVzRslUGx8gkA --values '[["hello","world"],["foo","bar"]]'
+
+# Write with auto-type (converts "2025-01-15" to serial 45672, "42" to number)
+lark sheet write T4mHsrFyzhXrj0tVzRslUGx8gkA --values '[["2025-01-15","42","text"]]' --auto-type
 
 # Write to specific sheet and range
 lark sheet write T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --range A1:B2 --values '[["a","b"],["c","d"]]'
@@ -153,23 +162,41 @@ lark sheet add-tab T4mHsrFyzhXrj0tVzRslUGx8gkA --title "README" --index 0
 ### Apply Cell Formatting (Style)
 
 ```bash
-lark sheet style <spreadsheet_token> --range <A1:Z1> [--sheet <sheet_id>] [--bold]
+lark sheet style <spreadsheet_token> --range <A1:Z1> [--sheet <sheet_id>] [--bold] [--format <format_string>]
 ```
 
-Applies formatting to a range of cells. Currently supports bold formatting.
+Applies formatting to a range of cells. Supports bold and number/date formatting.
 
 Options:
-- `--range`: Cell range in A1 notation (required)
+- `--range`: Cell range in A1 notation (required, must be `A1:B1` format, not just `A1`)
 - `--sheet`: Sheet ID (default: first sheet)
 - `--bold`: Apply bold formatting
+- `--format`: Number/date format string
+
+Common format strings:
+- `"yyyy-MM-dd"` - Date (2025-01-15)
+- `"yyyy/MM/dd"` - Date with slashes
+- `"yyyy/MM/dd HH:mm:ss"` - Datetime
+- `"#,##0"` - Integer with thousands separator
+- `"#,##0.00"` - Number with 2 decimals
+- `"0%"` - Percentage
+- `"0.00%"` - Percentage with decimals
+- `"$#,##0"` - USD currency
+- `"@"` - Plain text
 
 Examples:
 ```bash
-# Bold the header row on a specific sheet
-lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --range A1:Q1 --bold
+# Bold the header row
+lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range A1:Q1 --bold
 
-# Bold header row using default (first) sheet
-lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range A1:Z1 --bold
+# Format date columns
+lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range H2:I122 --format "yyyy-MM-dd"
+
+# Format number columns
+lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range J2:K122 --format "#,##0"
+
+# Bold and format together
+lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range A1:A1 --bold --format "#,##0"
 ```
 
 ### Resize Column Widths
@@ -213,6 +240,8 @@ The spreadsheet_token is from the spreadsheet URL:
 | Create new spreadsheet | `sheet create` | Needs title; optional folder |
 | Add a new tab | `sheet add-tab` | Requires title flag |
 | Bold headers | `sheet style --bold` | Requires --range |
+| Format dates/numbers | `sheet style --format` | Use with auto-typed values |
+| Auto-type on write | `sheet write --auto-type` | Converts date/number strings |
 | Adjust column widths | `sheet resize` | By index or uniformly |
 
 ## Workflow Examples
@@ -340,4 +369,4 @@ lark auth status
 - Column letters limited to A-Z (26 columns) when auto-detecting range
 - Rich text cells may return structured objects instead of plain strings
 - Some merged cells may have unexpected value placement
-- `sheet style` currently only supports bold formatting
+- `sheet style --format` requires the range to use `A1:B1` notation (not just `A1`)

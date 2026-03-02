@@ -137,6 +137,28 @@ func (c *Client) SetSheetStyleBold(token, sheetID, rangeSpec string) error {
 	return nil
 }
 
+// SetSheetStyle applies a style to a range of cells
+func (c *Client) SetSheetStyle(token, sheetID, rangeSpec string, style SheetStyle) error {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/styles_batch_update", url.PathEscape(token))
+	fullRange := sheetID + "!" + rangeSpec
+	req := SheetStyleBatchUpdateRequest{
+		Data: []SheetStyleItem{
+			{
+				Ranges: []string{fullRange},
+				Style:  style,
+			},
+		},
+	}
+	var resp SheetStyleBatchUpdateResponse
+	if err := c.Put(path, req, &resp); err != nil {
+		return err
+	}
+	if resp.Code != 0 {
+		return fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+	return nil
+}
+
 // AddSheetTab adds a new sheet tab to a spreadsheet.
 func (c *Client) AddSheetTab(token, title string, index int) (*OutputSheetAddTab, error) {
 	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/sheets_batch_update", url.PathEscape(token))

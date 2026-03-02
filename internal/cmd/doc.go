@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -160,6 +161,9 @@ Examples:
 				ParentToken:  item.ParentToken,
 				URL:          item.URL,
 				ShortcutInfo: item.ShortcutInfo,
+				CreatedTime:  formatUnixTimestamp(parseUnixStr(item.CreatedTime)),
+				ModifiedTime: formatUnixTimestamp(parseUnixStr(item.ModifiedTime)),
+				OwnerID:      item.OwnerID,
 			}
 		}
 
@@ -361,6 +365,12 @@ func formatUnixTimestamp(ts int64) string {
 		return ""
 	}
 	return time.Unix(ts, 0).Format(time.RFC3339)
+}
+
+// parseUnixStr parses a unix timestamp string to int64
+func parseUnixStr(s string) int64 {
+	n, _ := strconv.ParseInt(s, 10, 64)
+	return n
 }
 
 // --- doc wiki-search ---
@@ -873,6 +883,81 @@ Examples:
 	},
 }
 
+// --- doc info ---
+
+var docInfoCmd = &cobra.Command{
+	Use:   "info <token>",
+	Short: "Get file or folder metadata",
+	Long: `Get metadata for a Lark Drive file or folder.
+
+Returns title, owner, creation time, last modified time, and URL.
+The --type flag specifies the document type (default: file).
+
+Supported types: doc, docx, sheet, bitable, folder, file, mindnote, slides, wiki
+
+Examples:
+  lark doc info fldbcRho46N6... --type folder
+  lark doc info Mbxmsn4eRha6... --type sheet`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		docType, _ := cmd.Flags().GetString("type")
+		if docType == "" {
+			docType = "file"
+		}
+
+		client := api.NewClient()
+		meta, err := client.GetDriveMeta(token, docType)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputDriveInfo{
+			Token:            meta.DocToken,
+			Type:             meta.DocType,
+			Title:            meta.Title,
+			OwnerID:          meta.OwnerID,
+			CreateTime:       formatUnixTimestamp(parseUnixStr(meta.CreateTime)),
+			LatestModifyUser: meta.LatestModifyUser,
+			LatestModifyTime: formatUnixTimestamp(parseUnixStr(meta.LatestModifyTime)),
+			URL:              meta.URL,
+		}
+		output.JSON(result)
+	},
+}
+
+// --- doc mkdir ---
+
+var docMkdirCmd = &cobra.Command{
+	Use:   "mkdir <name>",
+	Short: "Create a new folder in Lark Drive",
+	Long: `Create a new folder in Lark Drive.
+
+By default creates in the root of your cloud space.
+Use --folder to specify a parent folder.
+
+Examples:
+  lark doc mkdir "Project Files"
+  lark doc mkdir "Reports" --folder fldbcRho46N6...`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		name := args[0]
+		parentToken, _ := cmd.Flags().GetString("folder")
+
+		client := api.NewClient()
+		token, url, err := client.CreateFolder(name, parentToken)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		output.JSON(api.OutputCreateFolder{
+			Token: token,
+			Name:  name,
+			URL:   url,
+		})
+	},
+}
+
 // codeLanguageHelp returns a string listing code language IDs for the help text
 func codeLanguageHelp() string {
 	return "Common language IDs: 1=PlainText, 7=Bash, 8=C#, 9=C++, 10=C, 12=CSS, 22=Go, 24=HTML, 28=JSON, 29=Java, 30=JavaScript, 32=Kotlin, 49=Python, 52=Ruby, 53=Rust, 56=SQL, 61=Swift, 63=TypeScript, 67=YAML"
@@ -893,6 +978,14 @@ func init() {
 	docCmd.AddCommand(docCreateCmd)
 	docCmd.AddCommand(docAppendCmd)
 	docCmd.AddCommand(docUploadCmd)
+	docCmd.AddCommand(docInfoCmd)
+	docCmd.AddCommand(docMkdirCmd)
+
+	// Flags for doc info
+	docInfoCmd.Flags().String("type", "file", "Document type: doc, docx, sheet, bitable, folder, file, mindnote, slides, wiki")
+
+	// Flags for doc mkdir
+	docMkdirCmd.Flags().String("folder", "", "Parent folder token (default: root)")
 
 	// Flags for doc upload
 	docUploadCmd.Flags().String("folder", "", "Folder token to upload into (default: root)")

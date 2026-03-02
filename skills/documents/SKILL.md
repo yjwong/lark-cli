@@ -69,7 +69,10 @@ Output:
       "name": "My Document",
       "type": "docx",
       "parent_token": "fldbcRho46N6MQ3mJkOAuPabcef",
-      "url": "https://larksuite.com/docx/doxcntan34DX4QoKJu7jJyabcef"
+      "url": "https://larksuite.com/docx/doxcntan34DX4QoKJu7jJyabcef",
+      "created_time": "2024-03-17T01:54:45+08:00",
+      "modified_time": "2026-03-02T13:07:17+08:00",
+      "owner_id": "ou_xxxx"
     }
   ],
   "count": 1
@@ -79,6 +82,51 @@ Output:
 Item types: `doc`, `docx`, `sheet`, `bitable`, `mindnote`, `file`, `folder`, `shortcut`
 
 For shortcuts, includes `shortcut_info` with `target_type` and `target_token`.
+
+### Get File/Folder Metadata
+
+```bash
+lark doc info <token> [--type <doc_type>]
+```
+
+Gets detailed metadata for a Lark Drive file or folder.
+
+Options:
+- `--type`: Document type (default: `file`). Supported: `doc`, `docx`, `sheet`, `bitable`, `folder`, `file`, `mindnote`, `slides`, `wiki`
+
+Output:
+```json
+{
+  "token": "Mbxmsn4eRha6ZXtqY9HlfVhsgab",
+  "type": "sheet",
+  "title": "API Task Inventory",
+  "owner_id": "ou_xxxx",
+  "create_time": "2026-03-02T13:07:16+08:00",
+  "latest_modify_user": "ou_yyyy",
+  "latest_modify_time": "2026-03-02T13:28:30+08:00",
+  "url": "https://glints.sg.larksuite.com/sheets/Mbxmsn4eRha6ZXtqY9HlfVhsgab"
+}
+```
+
+### Create Folder
+
+```bash
+lark doc mkdir <name> [--folder <parent_folder_token>]
+```
+
+Creates a new folder in Lark Drive. By default creates in the root cloud space.
+
+Options:
+- `--folder`: Parent folder token (default: root)
+
+Output:
+```json
+{
+  "token": "DyW7fcz0GlfQQwdODEIlw1TOgZh",
+  "name": "Project Files",
+  "url": "https://glints.sg.larksuite.com/drive/folder/DyW7fcz0GlfQQwdODEIlw1TOgZh"
+}
+```
 
 ### Upload File to Drive
 

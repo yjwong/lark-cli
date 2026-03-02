@@ -888,6 +888,9 @@ type FolderItem struct {
 	ParentToken  string        `json:"parent_token"`
 	URL          string        `json:"url"`
 	ShortcutInfo *ShortcutInfo `json:"shortcut_info,omitempty"`
+	CreatedTime  string        `json:"created_time,omitempty"`
+	ModifiedTime string        `json:"modified_time,omitempty"`
+	OwnerID      string        `json:"owner_id,omitempty"`
 }
 
 // ListFolderItemsResponse is the API response for listing folder items
@@ -906,8 +909,11 @@ type OutputFolderItem struct {
 	Name         string        `json:"name"`
 	Type         string        `json:"type"`
 	ParentToken  string        `json:"parent_token,omitempty"`
-	URL          string        `json:"url"`
+	URL          string        `json:"url,omitempty"`
 	ShortcutInfo *ShortcutInfo `json:"shortcut_info,omitempty"`
+	CreatedTime  string        `json:"created_time,omitempty"`
+	ModifiedTime string        `json:"modified_time,omitempty"`
+	OwnerID      string        `json:"owner_id,omitempty"`
 }
 
 // OutputFolderItemsList is the CLI output for listing folder items
@@ -915,6 +921,70 @@ type OutputFolderItemsList struct {
 	FolderToken string             `json:"folder_token,omitempty"`
 	Items       []OutputFolderItem `json:"items"`
 	Count       int                `json:"count"`
+}
+
+// --- Drive Metadata Types ---
+
+type DriveMetaRequest struct {
+	RequestDocs []DriveMetaRequestDoc `json:"request_docs"`
+	WithURL     bool                  `json:"with_url"`
+}
+
+type DriveMetaRequestDoc struct {
+	DocToken string `json:"doc_token"`
+	DocType  string `json:"doc_type"`
+}
+
+type DriveMetaResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Metas []DriveMetaItem `json:"metas"`
+	} `json:"data"`
+}
+
+type DriveMetaItem struct {
+	DocToken         string `json:"doc_token"`
+	DocType          string `json:"doc_type"`
+	Title            string `json:"title"`
+	OwnerID          string `json:"owner_id"`
+	CreateTime       string `json:"create_time"`
+	LatestModifyUser string `json:"latest_modify_user"`
+	LatestModifyTime string `json:"latest_modify_time"`
+	URL              string `json:"url"`
+}
+
+type OutputDriveInfo struct {
+	Token            string `json:"token"`
+	Type             string `json:"type"`
+	Title            string `json:"title"`
+	OwnerID          string `json:"owner_id"`
+	CreateTime       string `json:"create_time"`
+	LatestModifyUser string `json:"latest_modify_user,omitempty"`
+	LatestModifyTime string `json:"latest_modify_time"`
+	URL              string `json:"url"`
+}
+
+// --- Create Folder Types ---
+
+type CreateFolderRequest struct {
+	Name        string `json:"name"`
+	FolderToken string `json:"folder_token"`
+}
+
+type CreateFolderResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Token string `json:"token"`
+		URL   string `json:"url"`
+	} `json:"data"`
+}
+
+type OutputCreateFolder struct {
+	Token string `json:"token"`
+	Name  string `json:"name"`
+	URL   string `json:"url"`
 }
 
 // --- Document Comment Types ---
@@ -1621,7 +1691,8 @@ type SheetStyleFont struct {
 }
 
 type SheetStyle struct {
-	Font *SheetStyleFont `json:"font,omitempty"`
+	Font      *SheetStyleFont `json:"font,omitempty"`
+	Formatter string          `json:"formatter,omitempty"`
 }
 
 type SheetStyleItem struct {

@@ -384,3 +384,37 @@ func (c *Client) SearchDocuments(query string, ownerIDs, chatIDs, docTypes []str
 		offset += pageSize
 	}
 }
+
+
+func (c *Client) GetDriveMeta(docToken, docType string) (*DriveMetaItem, error) {
+	req := DriveMetaRequest{
+		RequestDocs: []DriveMetaRequestDoc{{DocToken: docToken, DocType: docType}},
+		WithURL:     true,
+	}
+	var resp DriveMetaResponse
+	if err := c.Post("/drive/v1/metas/batch_query", req, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+	if len(resp.Data.Metas) == 0 {
+		return nil, fmt.Errorf("no metadata returned for token %s", docToken)
+	}
+	return &resp.Data.Metas[0], nil
+}
+
+func (c *Client) CreateFolder(name, parentToken string) (string, string, error) {
+	req := CreateFolderRequest{
+		Name:        name,
+		FolderToken: parentToken,
+	}
+	var resp CreateFolderResponse
+	if err := c.Post("/drive/v1/files/create_folder", req, &resp); err != nil {
+		return "", "", err
+	}
+	if resp.Code != 0 {
+		return "", "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+	return resp.Data.Token, resp.Data.URL, nil
+}

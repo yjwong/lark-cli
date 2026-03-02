@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yjwong/lark-cli/internal/api"
@@ -287,6 +289,11 @@ Examples:
 			output.Fatal("PARSE_ERROR", fmt.Errorf("invalid values JSON (must be array of arrays): %w", err))
 		}
 
+		autoType, _ := cmd.Flags().GetBool("auto-type")
+		if autoType {
+			values = autoTypeValues(values)
+		}
+
 		// Build the range string
 		if rangeSpec == "" {
 			rangeSpec = "A1"
@@ -314,6 +321,40 @@ Examples:
 	},
 }
 
+// autoTypeValues converts string values to appropriate types:
+// - "YYYY-MM-DD" date strings become Excel serial date numbers
+// - Integer strings become int
+// - Float strings become float64
+func autoTypeValues(values [][]any) [][]any {
+	dateRegex := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	for i, row := range values {
+		for j, cell := range row {
+			s, ok := cell.(string)
+			if !ok {
+				continue
+			}
+			if dateRegex.MatchString(s) {
+				t, err := time.Parse("2006-01-02", s)
+				if err == nil {
+					// Excel serial date: days since 1899-12-30
+					epoch := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
+					values[i][j] = int(t.Sub(epoch).Hours() / 24)
+					continue
+				}
+			}
+			if n, err := strconv.Atoi(s); err == nil {
+				values[i][j] = n
+				continue
+			}
+			if f, err := strconv.ParseFloat(s, 64); err == nil {
+				values[i][j] = f
+				continue
+			}
+		}
+	}
+	return values
+}
+
 // --- sheet style ---
 
 var sheetStyleCmd = &cobra.Command{
@@ -321,30 +362,40 @@ var sheetStyleCmd = &cobra.Command{
 	Short: "Apply style (e.g. bold) to a cell range",
 	Long: `Apply formatting to a range of cells in a Lark spreadsheet.
 
-Currently supports bold formatting. Specify the range with --range and the sheet with --sheet.
+Currently supports bold formatting and number/date format. Specify the range with --range and the sheet with --sheet.
 
 Examples:
   lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --range A1:Q1 --bold
-  lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range A1:Z1 --bold`,
+  lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range H2:I122 --format "yyyy-MM-dd"
+  lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range J2:K122 --format "#,##0"`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		token := args[0]
 		sheetID, _ := cmd.Flags().GetString("sheet")
 		rangeSpec, _ := cmd.Flags().GetString("range")
 		bold, _ := cmd.Flags().GetBool("bold")
+		format, _ := cmd.Flags().GetString("format")
 
 		if rangeSpec == "" {
 			output.Fatal("MISSING_ARG", fmt.Errorf("--range is required"))
 		}
-		if !bold {
-			output.Fatal("MISSING_ARG", fmt.Errorf("at least one style flag is required (e.g. --bold)"))
+		if !bold && format == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("at least one style flag is required (e.g. --bold, --format)"))
 		}
 
 		client := api.NewClient()
 
 		sheetID = resolveSheetID(client, token, sheetID)
 
-		if err := client.SetSheetStyleBold(token, sheetID, rangeSpec); err != nil {
+		style := api.SheetStyle{}
+		if bold {
+			style.Font = &api.SheetStyleFont{Bold: true}
+		}
+		if format != "" {
+			style.Formatter = format
+		}
+
+		if err := client.SetSheetStyle(token, sheetID, rangeSpec, style); err != nil {
 			output.Fatal("API_ERROR", err)
 		}
 
@@ -459,6 +510,7 @@ func init() {
 	sheetWriteCmd.Flags().String("sheet", "", "Sheet ID to write to (default: first sheet)")
 	sheetWriteCmd.Flags().String("range", "", "Target range in A1 notation (e.g., A1:C3, default: A1)")
 	sheetWriteCmd.Flags().String("values", "", "JSON array of arrays (e.g., '[[\"a\",\"b\"],[\"c\",\"d\"]]')")
+	sheetWriteCmd.Flags().Bool("auto-type", false, "Auto-detect and convert date strings (YYYY-MM-DD) to serial numbers and numeric strings to numbers")
 
 	// Flags for sheet create
 	sheetCreateCmd.Flags().String("title", "", "Spreadsheet title (required)")
@@ -468,6 +520,7 @@ func init() {
 	sheetStyleCmd.Flags().String("sheet", "", "Sheet ID (default: first sheet)")
 	sheetStyleCmd.Flags().String("range", "", "Cell range in A1 notation (e.g., A1:Q1) - required")
 	sheetStyleCmd.Flags().Bool("bold", false, "Apply bold formatting")
+	sheetStyleCmd.Flags().String("format", "", `Number/date format string (e.g., "yyyy-MM-dd", "#,##0", "0.00%")`)
 
 	// Flags for sheet resize
 	sheetResizeCmd.Flags().String("sheet", "", "Sheet ID (default: first sheet)")
