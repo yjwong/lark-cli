@@ -391,11 +391,35 @@ Errors return JSON:
 }
 ```
 
-Common error codes:
-- `AUTH_ERROR` - Need to run `lark auth login`
-- `SCOPE_ERROR` - Missing documents permissions. Run `lark auth login --add --scopes documents`
-- `API_ERROR` - Lark API issue (often permissions)
+### CLI Error Codes
+
+- `AUTH_ERROR` - Not logged in. Run `lark auth login`
+- `SCOPE_ERROR` - Missing OAuth scope. Run `lark auth login --add --scopes documents`
+- `API_ERROR` - Lark API rejected the request (see message for Lark error code)
 - `NO_SHEETS` - Spreadsheet has no sheets
+
+### Lark API Permission Errors (inside API_ERROR)
+
+When you see `API_ERROR`, the message includes a Lark error code. Common ones:
+
+| Lark Code | Meaning | What to tell the user |
+|-----------|---------|----------------------|
+| 99991663 | No read/write permission on this file | The sheet owner needs to share it with you. Ask them to go to the sheet → Share → add your Lark account with at least Viewer access. |
+| 99991664 | No write permission (read-only access) | You have view-only access. Ask the owner to grant Editor access. |
+| 99991400 | Invalid token / file does not exist | The spreadsheet token in the URL may be wrong, or the file was deleted. Double-check the URL. |
+| 99991401 | App not authorized to access tenant | The Lark app needs to be added to the workspace. Contact your Lark admin. |
+| 99991668 | Rate limited | Too many requests. Wait a moment and retry. |
+| 1254043  | Sheet range invalid | The `--range` value is out of bounds for this sheet. Use `sheet list` to check the sheet's actual dimensions. |
+
+### When the User Gets Access Denied
+
+If `sheet read` or `sheet list` returns a permission error, tell the user **exactly**:
+
+1. **Who needs to act**: the spreadsheet owner (or anyone with Editor+ access)
+2. **What they need to do**: open the sheet in Lark → click Share (top right) → add the user's Lark email → set role to at least Viewer
+3. **Then retry**: the same command will work once access is granted - no re-login needed
+
+Do NOT suggest exporting to CSV, pasting values manually, or using a public link as workarounds - the lark-cli tool authenticates as the user and will work once access is properly shared.
 
 ## Required Permissions
 

@@ -675,10 +675,33 @@ Errors return JSON:
 }
 ```
 
-Common error codes:
-- `AUTH_ERROR` - Need to run `lark auth login`
-- `SCOPE_ERROR` - Missing documents permissions. Run `lark auth login --add --scopes documents`
-- `API_ERROR` - Lark API issue (often permissions)
+### CLI Error Codes
+
+- `AUTH_ERROR` - Not logged in. Run `lark auth login`
+- `SCOPE_ERROR` - Missing OAuth scope. Run `lark auth login --add --scopes documents`
+- `API_ERROR` - Lark API rejected the request (see message for Lark error code)
+
+### Lark API Permission Errors (inside API_ERROR)
+
+When you see `API_ERROR`, the message includes a Lark error code. Common ones:
+
+| Lark Code | Meaning | What to tell the user |
+|-----------|---------|----------------------|
+| 99991663 | No read/write permission on this file | The document owner needs to share it with you. Ask them to open the doc → Share → add your Lark account with at least Viewer access. |
+| 99991664 | No write permission (read-only access) | You have view-only access. Ask the owner to grant Editor access. |
+| 99991400 | Invalid token / file does not exist | The document token may be wrong, or the file was deleted. Double-check the URL. |
+| 99991401 | App not authorized to access tenant | The Lark app needs to be added to the workspace. Contact your Lark admin. |
+| 99991668 | Rate limited | Too many requests. Wait a moment and retry. |
+
+### When the User Gets Access Denied
+
+If `doc get`, `doc blocks`, or any doc command returns a permission error, tell the user **exactly**:
+
+1. **Who needs to act**: the document owner (or anyone with Editor+ access)
+2. **What they need to do**: open the doc in Lark → click Share (top right) → add the user's Lark email → set role to at least Viewer
+3. **Then retry**: the same command will work once access is granted - no re-login needed
+
+Do NOT suggest copy-pasting content manually as a workaround - the lark-cli tool authenticates as the user and will work once access is properly shared.
 
 ## Required Permissions
 
@@ -692,8 +715,6 @@ To check current permissions:
 ```bash
 lark auth status
 ```
-
-If you get an `API_ERROR` after confirming scopes are granted, the user may need to ensure they have access to the specific document in Lark.
 
 ## Efficient Extraction with jq and grep
 
