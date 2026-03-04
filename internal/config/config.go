@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -106,6 +107,17 @@ func GetAppSecret() string {
 // GetTimezone returns the default timezone
 func GetTimezone() string {
 	return viper.GetString("defaults.timezone")
+}
+
+// LoadTimezone loads the configured timezone as a *time.Location.
+// Falls back to time.Local if the configured timezone is invalid.
+func LoadTimezone() *time.Location {
+	tz := GetTimezone()
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.Local
+	}
+	return loc
 }
 
 // GetRedirectPort returns the OAuth redirect port

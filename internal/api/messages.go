@@ -39,13 +39,11 @@ func (c *Client) ListMessages(containerIDType, containerID string, opts *ListMes
 		containerIDType = "chat"
 	}
 
-	pageSize := 20
-	if opts != nil && opts.PageSize > 0 {
-		pageSize = opts.PageSize
-		if pageSize > 50 {
-			pageSize = 50
-		}
+	reqSize := 0
+	if opts != nil {
+		reqSize = opts.PageSize
 	}
+	pageSize := ClampPageSize(reqSize, 20, 50)
 
 	// Build query parameters
 	params := url.Values{}
@@ -75,8 +73,8 @@ func (c *Client) ListMessages(containerIDType, containerID string, opts *ListMes
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
@@ -84,13 +82,11 @@ func (c *Client) ListMessages(containerIDType, containerID string, opts *ListMes
 
 // ListMessageReactions retrieves reactions for a message
 func (c *Client) ListMessageReactions(messageID string, opts *ListMessageReactionsOptions) ([]MessageReaction, bool, string, error) {
-	pageSize := 20
-	if opts != nil && opts.PageSize > 0 {
-		pageSize = opts.PageSize
-		if pageSize > 50 {
-			pageSize = 50
-		}
+	reqSize := 0
+	if opts != nil {
+		reqSize = opts.PageSize
 	}
+	pageSize := ClampPageSize(reqSize, 20, 50)
 
 	params := url.Values{}
 	params.Set("page_size", fmt.Sprintf("%d", pageSize))
@@ -113,8 +109,8 @@ func (c *Client) ListMessageReactions(messageID string, opts *ListMessageReactio
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
@@ -187,8 +183,8 @@ func (c *Client) UploadMessageImage(filePath string) (string, error) {
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if uploadResp.Code != 0 {
-		return "", fmt.Errorf("API error %d: %s", uploadResp.Code, uploadResp.Msg)
+	if err := uploadResp.Err(); err != nil {
+		return "", err
 	}
 
 	if uploadResp.Data.ImageKey == "" {
@@ -217,8 +213,8 @@ func (c *Client) SendMessage(receiveIDType, receiveID, msgType, content string) 
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return &resp, nil
@@ -244,8 +240,8 @@ func (c *Client) ReplyMessage(messageID, msgType, content, rootID string, replyI
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return &resp, nil
@@ -261,8 +257,8 @@ func (c *Client) RecallMessage(messageID string) error {
 		return err
 	}
 
-	if resp.Code != 0 {
-		return fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return err
 	}
 
 	return nil
@@ -277,8 +273,8 @@ func (c *Client) DeleteMessageReaction(messageID, reactionID string) (*MessageRe
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data, nil
@@ -300,8 +296,8 @@ func (c *Client) AddMessageReaction(messageID, emojiType string) (*MessageReacti
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data, nil

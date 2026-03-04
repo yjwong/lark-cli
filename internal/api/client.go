@@ -105,6 +105,11 @@ func (c *Client) Delete(path string, result interface{}) error {
 	return c.doRequest("DELETE", path, nil, result)
 }
 
+// DeleteWithBody performs a DELETE request with a body
+func (c *Client) DeleteWithBody(path string, body interface{}, result interface{}) error {
+	return c.doRequest("DELETE", path, body, result)
+}
+
 // doRequestWithTenantToken performs an HTTP request using tenant access token
 func (c *Client) doRequestWithTenantToken(method, path string, body interface{}, result interface{}) error {
 	// Ensure we have a valid tenant token

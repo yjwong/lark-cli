@@ -1,6 +1,9 @@
 package api
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // TimeInfo represents Lark's time structure
 type TimeInfo struct {
@@ -83,6 +86,14 @@ type Calendar struct {
 type BaseResponse struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
+}
+
+// Err returns an error if the API response indicates failure, nil otherwise.
+func (r BaseResponse) Err() error {
+	if r.Code != 0 {
+		return fmt.Errorf("API error (code %d): %s", r.Code, r.Msg)
+	}
+	return nil
 }
 
 // UserCalendar wraps calendar with user info (for primary calendar response)
@@ -576,15 +587,21 @@ type Document struct {
 	Title      string `json:"title"`
 }
 
+// TextLink represents a hyperlink on a text element
+type TextLink struct {
+	URL string `json:"url"`
+}
+
 // TextElementStyle represents text styling
 type TextElementStyle struct {
-	Bold            bool `json:"bold,omitempty"`
-	Italic          bool `json:"italic,omitempty"`
-	Strikethrough   bool `json:"strikethrough,omitempty"`
-	Underline       bool `json:"underline,omitempty"`
-	InlineCode      bool `json:"inline_code,omitempty"`
-	BackgroundColor int  `json:"background_color,omitempty"`
-	TextColor       int  `json:"text_color,omitempty"`
+	Bold            bool      `json:"bold,omitempty"`
+	Italic          bool      `json:"italic,omitempty"`
+	Strikethrough   bool      `json:"strikethrough,omitempty"`
+	Underline       bool      `json:"underline,omitempty"`
+	InlineCode      bool      `json:"inline_code,omitempty"`
+	BackgroundColor int       `json:"background_color,omitempty"`
+	TextColor       int       `json:"text_color,omitempty"`
+	Link            *TextLink `json:"link,omitempty"`
 }
 
 // TextRun represents a text run element
@@ -706,7 +723,7 @@ type CreateDocumentRequest struct {
 // CreateBlockChildrenRequest is the request body for creating block children
 type CreateBlockChildrenRequest struct {
 	Children []DocumentBlock `json:"children"`
-	Index    int             `json:"index,omitempty"`
+	Index    int             `json:"index"`
 }
 
 // CreateBlockChildrenResponse is the response from creating block children
@@ -717,6 +734,95 @@ type CreateBlockChildrenResponse struct {
 		DocumentRevisionID int             `json:"document_revision_id,omitempty"`
 		ClientToken        string          `json:"client_token,omitempty"`
 	} `json:"data,omitempty"`
+}
+
+// DeleteBlocksRequest is the request body for batch deleting block children
+type DeleteBlocksRequest struct {
+	StartIndex int `json:"start_index"`
+	EndIndex   int `json:"end_index"`
+}
+
+// DeleteBlocksResponse is the response from batch deleting blocks
+type DeleteBlocksResponse struct {
+	BaseResponse
+	Data struct {
+		DocumentRevisionID int `json:"document_revision_id,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// UpdateBlockRequest is the request body for PATCH /docx/v1/documents/{id}/blocks/{block_id}
+// The Lark API uses update_text_elements for ALL text-based block types (text, headings, bullet, etc.)
+type UpdateBlockRequest struct {
+	UpdateTextElements *TextBlock `json:"update_text_elements,omitempty"`
+}
+
+// ConvertToUpdateRequest converts a DocumentBlock to an UpdateBlockRequest.
+// The Lark API uses a single update_text_elements field for all text-based blocks.
+func ConvertToUpdateRequest(block DocumentBlock) UpdateBlockRequest {
+	var req UpdateBlockRequest
+	switch {
+	case block.Text != nil:
+		req.UpdateTextElements = block.Text
+	case block.Heading1 != nil:
+		req.UpdateTextElements = block.Heading1
+	case block.Heading2 != nil:
+		req.UpdateTextElements = block.Heading2
+	case block.Heading3 != nil:
+		req.UpdateTextElements = block.Heading3
+	case block.Heading4 != nil:
+		req.UpdateTextElements = block.Heading4
+	case block.Heading5 != nil:
+		req.UpdateTextElements = block.Heading5
+	case block.Heading6 != nil:
+		req.UpdateTextElements = block.Heading6
+	case block.Heading7 != nil:
+		req.UpdateTextElements = block.Heading7
+	case block.Heading8 != nil:
+		req.UpdateTextElements = block.Heading8
+	case block.Heading9 != nil:
+		req.UpdateTextElements = block.Heading9
+	case block.Bullet != nil:
+		req.UpdateTextElements = block.Bullet
+	case block.Ordered != nil:
+		req.UpdateTextElements = block.Ordered
+	case block.Code != nil:
+		req.UpdateTextElements = block.Code
+	case block.Quote != nil:
+		req.UpdateTextElements = block.Quote
+	case block.TodoBlock != nil:
+		req.UpdateTextElements = block.TodoBlock
+	}
+	return req
+}
+
+// UpdateBlockResponse is the response from updating a block
+type UpdateBlockResponse struct {
+	BaseResponse
+	Data struct {
+		Block              DocumentBlock `json:"block,omitempty"`
+		DocumentRevisionID int           `json:"document_revision_id,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// OutputDocumentDelete is the delete blocks response for CLI
+type OutputDocumentDelete struct {
+	Success            bool     `json:"success"`
+	DocumentRevisionID int      `json:"document_revision_id"`
+	DeletedBlockIDs    []string `json:"deleted_block_ids"`
+}
+
+// OutputDocumentUpdate is the update block response for CLI
+type OutputDocumentUpdate struct {
+	Success            bool          `json:"success"`
+	DocumentRevisionID int           `json:"document_revision_id"`
+	Block              DocumentBlock `json:"block,omitempty"`
+}
+
+// OutputDriveTrash is the trash file response for CLI
+type OutputDriveTrash struct {
+	Success   bool   `json:"success"`
+	FileToken string `json:"file_token"`
+	Type      string `json:"type"`
 }
 
 // OutputDocumentCreate is the create document response for CLI
@@ -888,6 +994,9 @@ type FolderItem struct {
 	ParentToken  string        `json:"parent_token"`
 	URL          string        `json:"url"`
 	ShortcutInfo *ShortcutInfo `json:"shortcut_info,omitempty"`
+	CreatedTime  string        `json:"created_time,omitempty"`
+	ModifiedTime string        `json:"modified_time,omitempty"`
+	OwnerID      string        `json:"owner_id,omitempty"`
 }
 
 // ListFolderItemsResponse is the API response for listing folder items
@@ -906,8 +1015,11 @@ type OutputFolderItem struct {
 	Name         string        `json:"name"`
 	Type         string        `json:"type"`
 	ParentToken  string        `json:"parent_token,omitempty"`
-	URL          string        `json:"url"`
+	URL          string        `json:"url,omitempty"`
 	ShortcutInfo *ShortcutInfo `json:"shortcut_info,omitempty"`
+	CreatedTime  string        `json:"created_time,omitempty"`
+	ModifiedTime string        `json:"modified_time,omitempty"`
+	OwnerID      string        `json:"owner_id,omitempty"`
 }
 
 // OutputFolderItemsList is the CLI output for listing folder items
@@ -915,6 +1027,68 @@ type OutputFolderItemsList struct {
 	FolderToken string             `json:"folder_token,omitempty"`
 	Items       []OutputFolderItem `json:"items"`
 	Count       int                `json:"count"`
+}
+
+// --- Drive Metadata Types ---
+
+type DriveMetaRequest struct {
+	RequestDocs []DriveMetaRequestDoc `json:"request_docs"`
+	WithURL     bool                  `json:"with_url"`
+}
+
+type DriveMetaRequestDoc struct {
+	DocToken string `json:"doc_token"`
+	DocType  string `json:"doc_type"`
+}
+
+type DriveMetaResponse struct {
+	BaseResponse
+	Data struct {
+		Metas []DriveMetaItem `json:"metas"`
+	} `json:"data"`
+}
+
+type DriveMetaItem struct {
+	DocToken         string `json:"doc_token"`
+	DocType          string `json:"doc_type"`
+	Title            string `json:"title"`
+	OwnerID          string `json:"owner_id"`
+	CreateTime       string `json:"create_time"`
+	LatestModifyUser string `json:"latest_modify_user"`
+	LatestModifyTime string `json:"latest_modify_time"`
+	URL              string `json:"url"`
+}
+
+type OutputDriveInfo struct {
+	Token            string `json:"token"`
+	Type             string `json:"type"`
+	Title            string `json:"title"`
+	OwnerID          string `json:"owner_id"`
+	CreateTime       string `json:"create_time"`
+	LatestModifyUser string `json:"latest_modify_user,omitempty"`
+	LatestModifyTime string `json:"latest_modify_time"`
+	URL              string `json:"url"`
+}
+
+// --- Create Folder Types ---
+
+type CreateFolderRequest struct {
+	Name        string `json:"name"`
+	FolderToken string `json:"folder_token"`
+}
+
+type CreateFolderResponse struct {
+	BaseResponse
+	Data struct {
+		Token string `json:"token"`
+		URL   string `json:"url"`
+	} `json:"data"`
+}
+
+type OutputCreateFolder struct {
+	Token string `json:"token"`
+	Name  string `json:"name"`
+	URL   string `json:"url"`
 }
 
 // --- Document Comment Types ---
@@ -1464,8 +1638,7 @@ type SetSheetValuesData struct {
 
 // SetSheetValuesResponse is the response from PUT /sheets/v2/spreadsheets/:token/values
 type SetSheetValuesResponse struct {
-	Code int                 `json:"code"`
-	Msg  string              `json:"msg"`
+	BaseResponse
 	Data *SetSheetValuesData `json:"data,omitempty"`
 }
 
@@ -1598,8 +1771,7 @@ type SpreadsheetInfo struct {
 
 // CreateSpreadsheetResponse is the response from POST /sheets/v3/spreadsheets
 type CreateSpreadsheetResponse struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
+	BaseResponse
 	Data struct {
 		Spreadsheet *SpreadsheetInfo `json:"spreadsheet,omitempty"`
 	} `json:"data,omitempty"`
@@ -1612,4 +1784,229 @@ type OutputSpreadsheetCreate struct {
 	Title            string `json:"title"`
 	URL              string `json:"url"`
 	FolderToken      string `json:"folder_token,omitempty"`
+}
+
+// --- Sheet Style Types ---
+
+type SheetStyleFont struct {
+	Bold bool `json:"bold,omitempty"`
+}
+
+type SheetStyle struct {
+	Font      *SheetStyleFont `json:"font,omitempty"`
+	Formatter string          `json:"formatter,omitempty"`
+}
+
+type SheetStyleItem struct {
+	Ranges []string   `json:"ranges"`
+	Style  SheetStyle `json:"style"`
+}
+
+type SheetStyleBatchUpdateRequest struct {
+	Data []SheetStyleItem `json:"data"`
+}
+
+type SheetStyleBatchUpdateResponse struct {
+	BaseResponse
+}
+
+type OutputSheetStyle struct {
+	Success bool `json:"success"`
+}
+
+// --- Sheet Dimension (Resize) Types ---
+
+type SheetDimension struct {
+	SheetID        string `json:"sheetId"`
+	MajorDimension string `json:"majorDimension"`
+	StartIndex     int    `json:"startIndex"`
+	EndIndex       int    `json:"endIndex"`
+}
+
+type SheetDimensionProperties struct {
+	FixedSize int `json:"fixedSize"`
+}
+
+type SheetDimensionRangeRequest struct {
+	Dimension            SheetDimension           `json:"dimension"`
+	DimensionProperties  SheetDimensionProperties `json:"dimensionProperties"`
+}
+
+type SheetDimensionRangeResponse struct {
+	BaseResponse
+}
+
+type OutputSheetResize struct {
+	Success    bool `json:"success"`
+	ColumnsSet int  `json:"columns_set"`
+}
+
+// --- Add Sheet Tab Types ---
+
+type AddSheetProperties struct {
+	Title string `json:"title"`
+	Index int    `json:"index"`
+}
+
+type AddSheetRequestItem struct {
+	AddSheet struct {
+		Properties AddSheetProperties `json:"properties"`
+	} `json:"addSheet"`
+}
+
+type AddSheetBatchRequest struct {
+	Requests []AddSheetRequestItem `json:"requests"`
+}
+
+type AddSheetBatchResponse struct {
+	BaseResponse
+	Data struct {
+		Replies []struct {
+			AddSheet struct {
+				Properties struct {
+					SheetID string `json:"sheetId"`
+					Title   string `json:"title"`
+					Index   int    `json:"index"`
+				} `json:"properties"`
+			} `json:"addSheet"`
+		} `json:"replies"`
+	} `json:"data,omitempty"`
+}
+
+type OutputSheetAddTab struct {
+	Success bool   `json:"success"`
+	SheetID string `json:"sheet_id"`
+	Title   string `json:"title"`
+	Index   int    `json:"index"`
+}
+
+// --- Task Types ---
+
+// Task represents a Lark task
+type Task struct {
+	GUID        string       `json:"guid,omitempty"`
+	Summary     string       `json:"summary,omitempty"`
+	Description string       `json:"description,omitempty"`
+	Due         *TaskDue     `json:"due,omitempty"`
+	Creator     *TaskMember  `json:"creator,omitempty"`
+	Members     []TaskMember `json:"members,omitempty"`
+	CompletedAt string       `json:"completed_at,omitempty"`
+	CreatedAt   string       `json:"created_at,omitempty"`
+	UpdatedAt   string       `json:"updated_at,omitempty"`
+	Status      string       `json:"status,omitempty"`
+	Mode        int          `json:"mode,omitempty"`
+	Source      int          `json:"source,omitempty"`
+}
+
+// TaskDue represents a task due date
+type TaskDue struct {
+	Timestamp string `json:"timestamp,omitempty"`
+	IsAllDay  bool   `json:"is_all_day,omitempty"`
+}
+
+// TaskMember represents a task member (creator, assignee, etc.)
+type TaskMember struct {
+	ID   string `json:"id,omitempty"`
+	Type string `json:"type,omitempty"`
+	Role string `json:"role,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// TaskListResponse is the API response for listing tasks
+type TaskListResponse struct {
+	BaseResponse
+	Data struct {
+		HasMore   bool   `json:"has_more"`
+		PageToken string `json:"page_token,omitempty"`
+		Items     []Task `json:"items,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// TaskResponse is the API response for getting a single task
+type TaskResponse struct {
+	BaseResponse
+	Data struct {
+		Task *Task `json:"task,omitempty"`
+	} `json:"data,omitempty"`
+}
+
+// --- Task CLI Output Types ---
+
+// OutputTaskList is the list tasks response for CLI
+type OutputTaskList struct {
+	Tasks   []OutputTask `json:"tasks"`
+	Count   int          `json:"count"`
+	HasMore bool         `json:"has_more"`
+}
+
+// OutputTask is the simplified task format for CLI output
+type OutputTask struct {
+	GUID        string `json:"guid"`
+	Summary     string `json:"summary"`
+	Description string `json:"description,omitempty"`
+	DueDate     string `json:"due_date,omitempty"`
+	IsAllDay    bool   `json:"is_all_day,omitempty"`
+	Status      string `json:"status"`
+	CreatorID   string `json:"creator_id,omitempty"`
+	CreatorName string `json:"creator_name,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+}
+
+// --- Drive Upload Types ---
+
+// UploadDriveFileResponse is the API response for uploading a file to Drive
+type UploadDriveFileResponse struct {
+	BaseResponse
+	Data struct {
+		FileToken string `json:"file_token"`
+	} `json:"data"`
+}
+
+// OutputDriveUpload is the CLI output for a drive file upload
+type OutputDriveUpload struct {
+	FileToken string `json:"file_token"`
+	FileName  string `json:"file_name"`
+	Size      int64  `json:"size"`
+}
+
+// OutputFindMatch is a single match result from doc find
+type OutputFindMatch struct {
+	BlockID   string `json:"block_id"`
+	ParentID  string `json:"parent_id"`
+	Index     int    `json:"index"`
+	BlockType int    `json:"block_type"`
+	Preview   string `json:"preview"`
+}
+
+// OutputDocumentFind is the doc find response for CLI
+type OutputDocumentFind struct {
+	DocumentID string            `json:"document_id"`
+	Query      string            `json:"query"`
+	Matches    []OutputFindMatch `json:"matches"`
+	Count      int               `json:"count"`
+}
+
+// OutlineEntry is a single heading entry in the document outline
+type OutlineEntry struct {
+	BlockID string `json:"block_id"`
+	Index   int    `json:"index"`
+	Level   int    `json:"level"`
+	Text    string `json:"text"`
+}
+
+// OutputDocumentOutline is the doc outline response for CLI
+type OutputDocumentOutline struct {
+	DocumentID string         `json:"document_id"`
+	Title      string         `json:"title,omitempty"`
+	Outline    []OutlineEntry `json:"outline"`
+	Count      int            `json:"count"`
+}
+
+// OutputDocumentMove is the doc move response for CLI
+type OutputDocumentMove struct {
+	Success            bool            `json:"success"`
+	DocumentRevisionID int             `json:"document_revision_id"`
+	BlockID            string          `json:"block_id"`
+	Blocks             []DocumentBlock `json:"blocks,omitempty"`
 }

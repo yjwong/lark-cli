@@ -12,8 +12,8 @@ func (c *Client) GetPrimaryCalendar() (*Calendar, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	// Primary calendar returns an array of calendars
@@ -38,8 +38,8 @@ func (c *Client) GetCalendar(calendarID string) (*Calendar, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Calendar, nil
@@ -47,31 +47,19 @@ func (c *Client) GetCalendar(calendarID string) (*Calendar, error) {
 
 // ListCalendars retrieves all calendars for the user
 func (c *Client) ListCalendars() ([]Calendar, error) {
-	var allCalendars []Calendar
-	var pageToken string
-
-	for {
-		var resp CalendarListResponse
+	return PaginateWith(func(pageToken string) ([]Calendar, bool, string, error) {
 		path := "/calendar/v4/calendars"
 		if pageToken != "" {
 			path += "?page_token=" + pageToken
 		}
 
+		var resp CalendarListResponse
 		if err := c.Get(path, &resp); err != nil {
-			return nil, err
+			return nil, false, "", err
 		}
-
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, false, "", err
 		}
-
-		allCalendars = append(allCalendars, resp.Data.Calendars...)
-
-		if !resp.Data.HasMore {
-			break
-		}
-		pageToken = resp.Data.PageToken
-	}
-
-	return allCalendars, nil
+		return resp.Data.Calendars, resp.Data.HasMore, resp.Data.PageToken, nil
+	})
 }

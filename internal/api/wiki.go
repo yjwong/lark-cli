@@ -16,8 +16,8 @@ func (c *Client) GetWikiNode(nodeToken string) (*WikiNode, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Node, nil
@@ -45,8 +45,8 @@ func (c *Client) SearchWikiNodes(query, spaceID, nodeID string) ([]WikiSearchIte
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Items, nil
@@ -56,10 +56,7 @@ func (c *Client) SearchWikiNodes(query, spaceID, nodeID string) ([]WikiSearchIte
 // spaceID: the wiki space ID
 // parentNodeToken: the parent node token
 func (c *Client) GetWikiNodeChildren(spaceID, parentNodeToken string) ([]WikiNode, error) {
-	var allItems []WikiNode
-	var pageToken string
-
-	for {
+	return PaginateWith(func(pageToken string) ([]WikiNode, bool, string, error) {
 		params := url.Values{}
 		params.Set("parent_node_token", parentNodeToken)
 		params.Set("page_size", "50")
@@ -72,20 +69,11 @@ func (c *Client) GetWikiNodeChildren(spaceID, parentNodeToken string) ([]WikiNod
 
 		var resp ListWikiChildrenResponse
 		if err := c.Get(path, &resp); err != nil {
-			return nil, err
+			return nil, false, "", err
 		}
-
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, false, "", err
 		}
-
-		allItems = append(allItems, resp.Data.Items...)
-
-		if !resp.Data.HasMore {
-			break
-		}
-		pageToken = resp.Data.PageToken
-	}
-
-	return allItems, nil
+		return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
+	})
 }

@@ -8,10 +8,7 @@ import (
 
 // ListBitableTables lists all tables in a Bitable app
 func (c *Client) ListBitableTables(appToken string) ([]BitableTable, error) {
-	var allTables []BitableTable
-	pageToken := ""
-
-	for {
+	return PaginateWith(func(pageToken string) ([]BitableTable, bool, string, error) {
 		path := fmt.Sprintf("/bitable/v1/apps/%s/tables?page_size=100", url.PathEscape(appToken))
 		if pageToken != "" {
 			path += "&page_token=" + url.QueryEscape(pageToken)
@@ -19,30 +16,18 @@ func (c *Client) ListBitableTables(appToken string) ([]BitableTable, error) {
 
 		var resp BitableTablesResponse
 		if err := c.Get(path, &resp); err != nil {
-			return nil, err
+			return nil, false, "", err
 		}
-
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, false, "", err
 		}
-
-		allTables = append(allTables, resp.Data.Items...)
-
-		if !resp.Data.HasMore || resp.Data.PageToken == "" {
-			break
-		}
-		pageToken = resp.Data.PageToken
-	}
-
-	return allTables, nil
+		return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
+	})
 }
 
 // ListBitableFields lists all fields in a Bitable table
 func (c *Client) ListBitableFields(appToken, tableID string) ([]BitableField, error) {
-	var allFields []BitableField
-	pageToken := ""
-
-	for {
+	return PaginateWith(func(pageToken string) ([]BitableField, bool, string, error) {
 		path := fmt.Sprintf("/bitable/v1/apps/%s/tables/%s/fields?page_size=100",
 			url.PathEscape(appToken), url.PathEscape(tableID))
 		if pageToken != "" {
@@ -51,22 +36,13 @@ func (c *Client) ListBitableFields(appToken, tableID string) ([]BitableField, er
 
 		var resp BitableFieldsResponse
 		if err := c.Get(path, &resp); err != nil {
-			return nil, err
+			return nil, false, "", err
 		}
-
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, false, "", err
 		}
-
-		allFields = append(allFields, resp.Data.Items...)
-
-		if !resp.Data.HasMore || resp.Data.PageToken == "" {
-			break
-		}
-		pageToken = resp.Data.PageToken
-	}
-
-	return allFields, nil
+		return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
+	})
 }
 
 // BitableRecordOptions configures the list records request
@@ -81,13 +57,11 @@ type BitableRecordOptions struct {
 
 // ListBitableRecords lists records in a Bitable table
 func (c *Client) ListBitableRecords(appToken, tableID string, opts *BitableRecordOptions) ([]BitableRecord, bool, string, error) {
-	pageSize := 100
-	if opts != nil && opts.PageSize > 0 {
-		pageSize = opts.PageSize
-		if pageSize > 500 {
-			pageSize = 500
-		}
+	reqSize := 0
+	if opts != nil {
+		reqSize = opts.PageSize
 	}
+	pageSize := ClampPageSize(reqSize, 100, 500)
 
 	params := url.Values{}
 	params.Set("page_size", strconv.Itoa(pageSize))
@@ -120,8 +94,8 @@ func (c *Client) ListBitableRecords(appToken, tableID string, opts *BitableRecor
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil

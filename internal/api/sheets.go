@@ -15,8 +15,8 @@ func (c *Client) GetSpreadsheetSheets(token string) ([]Sheet, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Sheets, nil
@@ -34,27 +34,34 @@ func (c *Client) GetSheetMetadata(token, sheetID string) (*Sheet, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Sheet, nil
 }
 
-// GetSheetData retrieves cell values from a sheet
+// GetSheetData retrieves cell values from a sheet.
 // token: the spreadsheet token
 // rangeStr: the range in format "sheetId!A1:Z100" or just "sheetId" for all data
-func (c *Client) GetSheetData(token, rangeStr string) (*SheetValues, error) {
-	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/values/%s",
-		url.PathEscape(token), url.PathEscape(rangeStr))
+// renderOption: controls how cell values are returned:
+//   - "ToString" (default): computed values as strings/numbers
+//   - "Formula": raw formula strings (e.g. "=SUM(A1:A10)")
+//   - "FormattedValue": display strings with number formatting applied
+func (c *Client) GetSheetData(token, rangeStr, renderOption string) (*SheetValues, error) {
+	if renderOption == "" {
+		renderOption = "ToString"
+	}
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/values/%s?valueRenderOption=%s",
+		url.PathEscape(token), url.PathEscape(rangeStr), url.QueryEscape(renderOption))
 
 	var resp SheetValuesResponse
 	if err := c.Get(path, &resp); err != nil {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data, nil
@@ -79,11 +86,112 @@ func (c *Client) SetSheetData(token string, sheetRange string, values [][]any) (
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data, nil
+}
+
+// SetSheetColumnWidths resizes columns in a sheet. widths is a map of 0-based column index to pixel width.
+func (c *Client) SetSheetColumnWidths(token, sheetID string, widths map[int]int) error {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/dimension_range", url.PathEscape(token))
+
+	for colIndex, pixelSize := range widths {
+		req := SheetDimensionRangeRequest{
+			Dimension: SheetDimension{
+				SheetID:        sheetID,
+				MajorDimension: "COLUMNS",
+				StartIndex:     colIndex + 1, // API is 1-based
+				EndIndex:       colIndex + 2,
+			},
+			DimensionProperties: SheetDimensionProperties{
+				FixedSize: pixelSize,
+			},
+		}
+		var resp SheetDimensionRangeResponse
+		if err := c.Put(path, req, &resp); err != nil {
+			return fmt.Errorf("column %d: %w", colIndex, err)
+		}
+		if err := resp.Err(); err != nil {
+			return fmt.Errorf("column %d: %w", colIndex, err)
+		}
+	}
+	return nil
+}
+
+// SetSheetStyleBold applies bold formatting to a range in a sheet.
+func (c *Client) SetSheetStyleBold(token, sheetID, rangeSpec string) error {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/styles_batch_update", url.PathEscape(token))
+
+	fullRange := sheetID + "!" + rangeSpec
+	req := SheetStyleBatchUpdateRequest{
+		Data: []SheetStyleItem{
+			{
+				Ranges: []string{fullRange},
+				Style:  SheetStyle{Font: &SheetStyleFont{Bold: true}},
+			},
+		},
+	}
+
+	var resp SheetStyleBatchUpdateResponse
+	if err := c.Put(path, req, &resp); err != nil {
+		return err
+	}
+	if err := resp.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SetSheetStyle applies a style to a range of cells
+func (c *Client) SetSheetStyle(token, sheetID, rangeSpec string, style SheetStyle) error {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/styles_batch_update", url.PathEscape(token))
+	fullRange := sheetID + "!" + rangeSpec
+	req := SheetStyleBatchUpdateRequest{
+		Data: []SheetStyleItem{
+			{
+				Ranges: []string{fullRange},
+				Style:  style,
+			},
+		},
+	}
+	var resp SheetStyleBatchUpdateResponse
+	if err := c.Put(path, req, &resp); err != nil {
+		return err
+	}
+	if err := resp.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// AddSheetTab adds a new sheet tab to a spreadsheet.
+func (c *Client) AddSheetTab(token, title string, index int) (*OutputSheetAddTab, error) {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/sheets_batch_update", url.PathEscape(token))
+
+	item := AddSheetRequestItem{}
+	item.AddSheet.Properties = AddSheetProperties{Title: title, Index: index}
+	req := AddSheetBatchRequest{
+		Requests: []AddSheetRequestItem{item},
+	}
+
+	var resp AddSheetBatchResponse
+	if err := c.Post(path, req, &resp); err != nil {
+		return nil, err
+	}
+	if err := resp.Err(); err != nil {
+		return nil, err
+	}
+
+	result := &OutputSheetAddTab{Success: true, Title: title, Index: index}
+	if len(resp.Data.Replies) > 0 {
+		props := resp.Data.Replies[0].AddSheet.Properties
+		result.SheetID = props.SheetID
+		result.Title = props.Title
+		result.Index = props.Index
+	}
+	return result, nil
 }
 
 // CreateSpreadsheet creates a new spreadsheet
@@ -100,8 +208,8 @@ func (c *Client) CreateSpreadsheet(title, folderToken string) (*SpreadsheetInfo,
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Spreadsheet, nil
