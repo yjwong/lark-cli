@@ -23,8 +23,8 @@ func (c *Client) GetMinute(minuteToken string) (*Minute, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Minute, nil
@@ -74,8 +74,8 @@ func (c *Client) GetMinuteMediaURL(minuteToken string) (string, error) {
 		return "", err
 	}
 
-	if resp.Code != 0 {
-		return "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return "", err
 	}
 
 	return resp.Data.DownloadURL, nil

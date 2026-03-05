@@ -1,10 +1,18 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
+	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
+
+	"github.com/yjwong/lark-cli/internal/auth"
 )
 
 // GetDocument retrieves document metadata
@@ -17,8 +25,8 @@ func (c *Client) GetDocument(documentID string) (*Document, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Document, nil
@@ -35,8 +43,8 @@ func (c *Client) GetDocumentContent(documentID string) (string, error) {
 		return "", err
 	}
 
-	if resp.Code != 0 {
-		return "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return "", err
 	}
 
 	return resp.Data.Content, nil
@@ -45,10 +53,7 @@ func (c *Client) GetDocumentContent(documentID string) (string, error) {
 // GetDocumentBlocks retrieves all blocks in a document with pagination
 // documentID: the document ID (token from document URL)
 func (c *Client) GetDocumentBlocks(documentID string) ([]DocumentBlock, error) {
-	var allBlocks []DocumentBlock
-	pageToken := ""
-
-	for {
+	return PaginateWith(func(pageToken string) ([]DocumentBlock, bool, string, error) {
 		path := fmt.Sprintf("/docx/v1/documents/%s/blocks?page_size=500",
 			url.PathEscape(documentID))
 		if pageToken != "" {
@@ -57,22 +62,13 @@ func (c *Client) GetDocumentBlocks(documentID string) ([]DocumentBlock, error) {
 
 		var resp DocumentBlocksResponse
 		if err := c.Get(path, &resp); err != nil {
-			return nil, err
+			return nil, false, "", err
 		}
-
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, false, "", err
 		}
-
-		allBlocks = append(allBlocks, resp.Data.Items...)
-
-		if !resp.Data.HasMore || resp.Data.PageToken == "" {
-			break
-		}
-		pageToken = resp.Data.PageToken
-	}
-
-	return allBlocks, nil
+		return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
+	})
 }
 
 // CreateDocument creates a new document
@@ -89,8 +85,8 @@ func (c *Client) CreateDocument(title, folderToken string) (*Document, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Document, nil
@@ -115,8 +111,8 @@ func (c *Client) CreateDocumentBlocks(documentID, blockID string, children []Doc
 		return nil, 0, err
 	}
 
-	if resp.Code != 0 {
-		return nil, 0, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, 0, err
 	}
 
 	return resp.Data.Children, resp.Data.DocumentRevisionID, nil
@@ -147,8 +143,8 @@ func (c *Client) ListFolderItems(folderToken string, pageSize int, pageToken str
 	if err := c.Get(path, &resp); err != nil {
 		return nil, false, "", err
 	}
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Files, resp.Data.HasMore, resp.Data.NextPageToken, nil
@@ -158,10 +154,7 @@ func (c *Client) ListFolderItems(folderToken string, pageSize int, pageToken str
 // fileToken: the document token (same as document ID)
 // fileType: document type (e.g., "docx", "doc", "sheet")
 func (c *Client) GetDocumentComments(fileToken, fileType string) ([]DocumentComment, error) {
-	var allComments []DocumentComment
-	pageToken := ""
-
-	for {
+	return PaginateWith(func(pageToken string) ([]DocumentComment, bool, string, error) {
 		path := fmt.Sprintf("/drive/v1/files/%s/comments?file_type=%s&page_size=100",
 			url.PathEscape(fileToken), url.QueryEscape(fileType))
 		if pageToken != "" {
@@ -170,22 +163,13 @@ func (c *Client) GetDocumentComments(fileToken, fileType string) ([]DocumentComm
 
 		var resp DocumentCommentsResponse
 		if err := c.Get(path, &resp); err != nil {
-			return nil, err
+			return nil, false, "", err
 		}
-
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, false, "", err
 		}
-
-		allComments = append(allComments, resp.Data.Items...)
-
-		if !resp.Data.HasMore || resp.Data.PageToken == "" {
-			break
-		}
-		pageToken = resp.Data.PageToken
-	}
-
-	return allComments, nil
+		return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
+	})
 }
 
 // GetMediaTempDownloadURL gets a temporary download URL for a media file
@@ -207,8 +191,8 @@ func (c *Client) GetMediaTempDownloadURL(fileToken, documentID string) (string, 
 		return "", err
 	}
 
-	if resp.Code != 0 {
-		return "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return "", err
 	}
 
 	if len(resp.Data.TmpDownloadURLs) == 0 {
@@ -249,6 +233,296 @@ func (c *Client) DownloadDriveFileWithTenant(fileToken string) (io.ReadCloser, s
 	return c.DownloadWithTenantToken(path)
 }
 
+// UploadDriveFile uploads a file to Lark Drive using the upload_all API
+// filePath: local file path
+// parentToken: folder token to upload into (empty for root)
+// parentType: "explorer" for Drive folder (default)
+// Returns the file token of the uploaded file
+func (c *Client) UploadDriveFile(filePath, parentToken, parentType string) (string, error) {
+	if err := auth.EnsureValidToken(); err != nil {
+		return "", err
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	if stat.Size() > 20*1024*1024 {
+		return "", fmt.Errorf("file size %d exceeds 20MB limit", stat.Size())
+	}
+
+	if parentType == "" {
+		parentType = "explorer"
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	_ = writer.WriteField("file_name", filepath.Base(filePath))
+	_ = writer.WriteField("parent_type", parentType)
+	if parentToken != "" {
+		_ = writer.WriteField("parent_node", parentToken)
+	}
+	_ = writer.WriteField("size", strconv.FormatInt(stat.Size(), 10))
+
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	if err != nil {
+		return "", fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err = io.Copy(part, file); err != nil {
+		return "", fmt.Errorf("failed to copy file data: %w", err)
+	}
+	writer.Close()
+
+	url := baseURL + "/drive/v1/files/upload_all"
+	req, err := http.NewRequest("POST", url, &body)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token := auth.GetTokenStore().GetAccessToken()
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var uploadResp UploadDriveFileResponse
+	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if err := uploadResp.Err(); err != nil {
+		return "", err
+	}
+
+	return uploadResp.Data.FileToken, nil
+}
+
+// DeleteDocumentBlocks deletes blocks from a document by their IDs
+// The Lark API deletes children by index range, so we need to resolve
+// block IDs to their parent and index positions first.
+// documentID: the document ID
+// blockIDs: IDs of blocks to delete
+func (c *Client) DeleteDocumentBlocks(documentID string, blockIDs []string) (int, error) {
+	// Build a set for quick lookup
+	toDelete := make(map[string]bool)
+	for _, id := range blockIDs {
+		toDelete[id] = true
+	}
+
+	// Get all blocks to find parent-child relationships
+	blocks, err := c.GetDocumentBlocks(documentID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get blocks: %w", err)
+	}
+
+	// Build a map of block ID -> block for quick lookup
+	blockMap := make(map[string]*DocumentBlock)
+	for i := range blocks {
+		blockMap[blocks[i].BlockID] = &blocks[i]
+	}
+
+	// Filter out blocks whose parent is also being deleted.
+	// When a parent block is deleted, its children are deleted too,
+	// so we only need to delete top-level blocks in the delete set.
+	topLevelDelete := make(map[string]bool)
+	for id := range toDelete {
+		block, ok := blockMap[id]
+		if !ok {
+			continue
+		}
+		// Walk up the parent chain to check if any ancestor is also being deleted
+		isDescendant := false
+		parentID := block.ParentID
+		for parentID != "" {
+			if toDelete[parentID] {
+				isDescendant = true
+				break
+			}
+			parent, ok := blockMap[parentID]
+			if !ok {
+				break
+			}
+			parentID = parent.ParentID
+		}
+		if !isDescendant {
+			topLevelDelete[id] = true
+		}
+	}
+
+	// Group blocks to delete by parent, tracking their child indices
+	// We need to delete from highest index to lowest to avoid shifting
+	type deleteOp struct {
+		parentID string
+		index    int
+	}
+	var ops []deleteOp
+
+	for _, block := range blocks {
+		if block.Children == nil {
+			continue
+		}
+		for idx, childID := range block.Children {
+			if topLevelDelete[childID] {
+				ops = append(ops, deleteOp{parentID: block.BlockID, index: idx})
+			}
+		}
+	}
+
+	if len(ops) == 0 {
+		return 0, fmt.Errorf("none of the specified block IDs were found as children")
+	}
+
+	// Sort ops by index descending (delete from end first to preserve indices)
+	for i := 0; i < len(ops)-1; i++ {
+		for j := i + 1; j < len(ops); j++ {
+			if ops[j].index > ops[i].index || (ops[j].index == ops[i].index && ops[j].parentID > ops[i].parentID) {
+				ops[i], ops[j] = ops[j], ops[i]
+			}
+		}
+	}
+
+	// Delete one at a time from highest index to lowest
+	var lastRevisionID int
+	for _, op := range ops {
+		path := fmt.Sprintf("/docx/v1/documents/%s/blocks/%s/children/batch_delete?document_revision_id=-1",
+			url.PathEscape(documentID), url.PathEscape(op.parentID))
+
+		req := DeleteBlocksRequest{
+			StartIndex: op.index,
+			EndIndex:   op.index + 1,
+		}
+
+		var resp DeleteBlocksResponse
+		if err := c.DeleteWithBody(path, req, &resp); err != nil {
+			return lastRevisionID, fmt.Errorf("failed to delete block at index %d: %w", op.index, err)
+		}
+
+		if err := resp.Err(); err != nil {
+			return lastRevisionID, err
+		}
+
+		lastRevisionID = resp.Data.DocumentRevisionID
+	}
+
+	return lastRevisionID, nil
+}
+
+// UpdateDocumentBlock updates a single block's content in a document
+// documentID: the document ID
+// blockID: the block ID to update
+// block: the updated block content
+func (c *Client) UpdateDocumentBlock(documentID, blockID string, block DocumentBlock) (int, error) {
+	path := fmt.Sprintf("/docx/v1/documents/%s/blocks/%s?document_revision_id=-1",
+		url.PathEscape(documentID), url.PathEscape(blockID))
+
+	updateReq := ConvertToUpdateRequest(block)
+
+	var resp UpdateBlockResponse
+	if err := c.Patch(path, updateReq, &resp); err != nil {
+		return 0, err
+	}
+
+	if err := resp.Err(); err != nil {
+		return 0, err
+	}
+
+	return resp.Data.DocumentRevisionID, nil
+}
+
+// ReplaceDocumentBlock atomically replaces a block: finds its position,
+// deletes it, and inserts new blocks at the same index.
+func (c *Client) ReplaceDocumentBlock(documentID, blockID string, newBlocks []DocumentBlock) ([]DocumentBlock, int, error) {
+	// Get all blocks to find the target block's parent and index
+	blocks, err := c.GetDocumentBlocks(documentID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get blocks: %w", err)
+	}
+
+	// Find the block's parent and its index within the parent's children
+	var parentID string
+	var childIdx int
+	found := false
+	for _, block := range blocks {
+		if block.Children == nil {
+			continue
+		}
+		for idx, childID := range block.Children {
+			if childID == blockID {
+				parentID = block.BlockID
+				childIdx = idx
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found {
+		return nil, 0, fmt.Errorf("block %s not found as a child of any block", blockID)
+	}
+
+	// Delete the block
+	path := fmt.Sprintf("/docx/v1/documents/%s/blocks/%s/children/batch_delete?document_revision_id=-1",
+		url.PathEscape(documentID), url.PathEscape(parentID))
+	req := DeleteBlocksRequest{
+		StartIndex: childIdx,
+		EndIndex:   childIdx + 1,
+	}
+	var delResp DeleteBlocksResponse
+	if err := c.DeleteWithBody(path, req, &delResp); err != nil {
+		return nil, 0, fmt.Errorf("failed to delete block: %w", err)
+	}
+	if err := delResp.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// Insert new blocks at the same index
+	createdBlocks, revisionID, err := c.CreateDocumentBlocks(documentID, parentID, newBlocks, childIdx)
+	if err != nil {
+		return nil, delResp.Data.DocumentRevisionID, fmt.Errorf("deleted block but failed to insert replacement: %w", err)
+	}
+
+	return createdBlocks, revisionID, nil
+}
+
+// DeleteDriveFile moves a file to trash in Lark Drive
+// fileToken: the file token
+// docType: document type (e.g., "docx", "doc", "sheet", "bitable", "folder", "file")
+func (c *Client) DeleteDriveFile(fileToken, docType string) error {
+	path := fmt.Sprintf("/drive/v1/files/%s?type=%s",
+		url.PathEscape(fileToken), url.QueryEscape(docType))
+
+	var resp BaseResponse
+	if err := c.Delete(path, &resp); err != nil {
+		return err
+	}
+
+	if err := resp.Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // SearchDocuments searches for documents using the Lark Docs API
 // query: search keyword (required)
 // ownerIDs: optional filter by owner user IDs
@@ -281,8 +555,8 @@ func (c *Client) SearchDocuments(query string, ownerIDs, chatIDs, docTypes []str
 			return nil, 0, err
 		}
 
-		if resp.Code != 0 {
-			return nil, 0, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, 0, err
 		}
 
 		allResults = append(allResults, resp.Data.DocsEntities...)
@@ -294,4 +568,38 @@ func (c *Client) SearchDocuments(query string, ownerIDs, chatIDs, docTypes []str
 
 		offset += pageSize
 	}
+}
+
+
+func (c *Client) GetDriveMeta(docToken, docType string) (*DriveMetaItem, error) {
+	req := DriveMetaRequest{
+		RequestDocs: []DriveMetaRequestDoc{{DocToken: docToken, DocType: docType}},
+		WithURL:     true,
+	}
+	var resp DriveMetaResponse
+	if err := c.Post("/drive/v1/metas/batch_query", req, &resp); err != nil {
+		return nil, err
+	}
+	if err := resp.Err(); err != nil {
+		return nil, err
+	}
+	if len(resp.Data.Metas) == 0 {
+		return nil, fmt.Errorf("no metadata returned for token %s", docToken)
+	}
+	return &resp.Data.Metas[0], nil
+}
+
+func (c *Client) CreateFolder(name, parentToken string) (string, string, error) {
+	req := CreateFolderRequest{
+		Name:        name,
+		FolderToken: parentToken,
+	}
+	var resp CreateFolderResponse
+	if err := c.Post("/drive/v1/files/create_folder", req, &resp); err != nil {
+		return "", "", err
+	}
+	if err := resp.Err(); err != nil {
+		return "", "", err
+	}
+	return resp.Data.Token, resp.Data.URL, nil
 }

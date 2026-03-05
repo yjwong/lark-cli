@@ -287,6 +287,11 @@ var (
 	msgSendRootID   string
 	msgSendParentID string
 	msgSendMsgType  string
+
+	// msg edit flags
+	msgEditMessageID string
+	msgEditText      string
+	msgEditMsgType   string
 )
 
 var msgSendCmd = &cobra.Command{
@@ -368,8 +373,14 @@ Examples:
 			imageKeys = append(imageKeys, imageKey)
 		}
 
-		// Build message content
+		// Auto-upgrade text -> post when mentions or markdown are detected
 		msgType := msgSendMsgType
+		if msgType == "text" && (strings.Contains(msgSendText, "@{") || strings.Contains(msgSendText, "**")) {
+			msgType = "post"
+			fmt.Fprintf(os.Stderr, "note: auto-upgraded --msg-type from text to post (mentions/markdown detected)\n")
+		}
+
+		// Build message content
 		var content string
 		var err error
 		if msgType == "text" {
@@ -792,17 +803,21 @@ func detectIDType(id string) string {
 }
 
 // unescapeString processes escape sequences like \n, \t, \r, etc.
-// Users can send literal backslash-n by escaping as \\n
+// Uses manual replacement instead of strconv.Unquote to be resilient against
+// shell-injected escapes (e.g. fish shell's \!) that would cause Unquote to
+// fail on the entire string, leaving ALL escapes unprocessed.
 func unescapeString(s string) string {
-	// Wrap string in quotes and use strconv.Unquote to process escape sequences
-	// This handles \n -> newline, \t -> tab, \r -> carriage return, \\ -> backslash, etc.
-	quoted := `"` + s + `"`
-	unquoted, err := strconv.Unquote(quoted)
-	if err != nil {
-		// If unquoting fails (e.g., malformed escape), return original string
-		return s
-	}
-	return unquoted
+	r := strings.NewReplacer(
+		`\\`, "\x00BACKSLASH\x00", // preserve literal \\
+		`\n`, "\n",
+		`\t`, "\t",
+		`\r`, "\r",
+	)
+	result := r.Replace(s)
+	result = strings.ReplaceAll(result, "\x00BACKSLASH\x00", `\`)
+	// Strip known shell-injected escapes (fish shell escapes ! as \!)
+	result = strings.ReplaceAll(result, `\!`, "!")
+	return result
 }
 
 // buildTextContent creates JSON content for text messages.
@@ -1056,6 +1071,57 @@ func buildPostTextStyle(isBold, isItalic bool) []string {
 
 // --- msg recall ---
 
+var msgEditCmd = &cobra.Command{
+	Use:   "edit",
+	Short: "Edit a sent message",
+	Long: `Edit a previously sent message in-place.
+
+Only the bot's own messages can be edited.
+
+Examples:
+  lark msg edit --message-id om_xxx --text "Updated text"
+  lark msg edit --message-id om_xxx --text "**Bold** and @{ou_xxx} mention"`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if msgEditMessageID == "" {
+			output.Fatalf("VALIDATION_ERROR", "--message-id is required")
+		}
+		if msgEditText == "" {
+			output.Fatalf("VALIDATION_ERROR", "--text is required")
+		}
+		if msgEditMsgType != "post" && msgEditMsgType != "text" {
+			output.Fatalf("VALIDATION_ERROR", "--msg-type must be 'post' or 'text'")
+		}
+
+		// Auto-upgrade text -> post when mentions or markdown are detected
+		msgType := msgEditMsgType
+		if msgType == "text" && (strings.Contains(msgEditText, "@{") || strings.Contains(msgEditText, "**")) {
+			msgType = "post"
+			fmt.Fprintf(os.Stderr, "note: auto-upgraded --msg-type from text to post (mentions/markdown detected)\n")
+		}
+
+		var content string
+		var err error
+		if msgType == "text" {
+			content, err = buildTextContent(msgEditText)
+		} else {
+			content, err = buildMarkdownPostContent(msgEditText)
+		}
+		if err != nil {
+			output.Fatal("VALIDATION_ERROR", err)
+		}
+
+		client := api.NewClient()
+		if err := client.EditMessage(msgEditMessageID, msgType, content); err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		output.JSON(map[string]interface{}{
+			"success":    true,
+			"message_id": msgEditMessageID,
+		})
+	},
+}
+
 var msgRecallCmd = &cobra.Command{
 	Use:   "recall <message-id>",
 	Short: "Recall a message",
@@ -1120,10 +1186,16 @@ func init() {
 	msgReactRemoveCmd.Flags().StringVar(&msgReactRemoveMessageID, "message-id", "", "Message ID to remove reaction from (required)")
 	msgReactRemoveCmd.Flags().StringVar(&msgReactRemoveReactionID, "reaction-id", "", "Reaction ID to remove (required)")
 
+	// msg edit flags
+	msgEditCmd.Flags().StringVar(&msgEditMessageID, "message-id", "", "Message ID to edit (required)")
+	msgEditCmd.Flags().StringVar(&msgEditText, "text", "", "New message text (markdown-lite)")
+	msgEditCmd.Flags().StringVar(&msgEditMsgType, "msg-type", "post", "Message type: post (default) or text")
+
 	// Register subcommands
 	msgCmd.AddCommand(msgHistoryCmd)
 	msgCmd.AddCommand(msgResourceCmd)
 	msgCmd.AddCommand(msgSendCmd)
+	msgCmd.AddCommand(msgEditCmd)
 	msgCmd.AddCommand(msgReactCmd)
 	msgCmd.AddCommand(msgRecallCmd)
 
