@@ -389,6 +389,10 @@ Content flags (at least one required):
 - `--ordered "item"`: Append ordered list items (repeatable)
 - `--todo "item"`: Append a todo/checkbox item
 - `--divider`: Append a horizontal divider
+- `--quote "content"`: Append a quote/blockquote
+- `--table-header "cell"`: Table header cells (repeatable, one per column)
+- `--table-row "cell1|cell2"`: Table row as pipe-separated cells (repeatable)
+- `--markdown`: Read markdown from stdin and convert to blocks
 - `--json`: Read raw block JSON from stdin
 
 Other flags:
@@ -406,6 +410,29 @@ lark doc append ABC123xyz --bullet "First item" --bullet "Second item"
 
 # Add a code block (Python)
 lark doc append ABC123xyz --code "print('hello')" --language 49
+
+# Add a quote block
+lark doc append ABC123xyz --quote "This is important"
+
+# Create a table
+lark doc append ABC123xyz --table-header "Name" --table-header "Status" --table-row "API|Done" --table-row "CLI|WIP"
+
+# Append from markdown (pipe from stdin)
+echo '# Section Title
+
+Paragraph text here.
+
+- bullet 1
+- bullet 2
+
+> A blockquote
+
+```python
+print("hello")
+```' | lark doc append ABC123xyz --markdown
+
+# Pipe a markdown file
+cat content.md | lark doc append ABC123xyz --markdown
 
 # Add raw blocks via JSON stdin
 echo '[{"block_type":2,"text":{"elements":[{"text_run":{"content":"raw"}}]}}]' | lark doc append ABC123xyz --json
@@ -534,7 +561,7 @@ Output:
 lark doc replace <document-id> <block-id> [content flags]
 ```
 
-Atomically replaces a block: deletes it and inserts new content at the same position. Supports the same content flags as `append`. This is the recommended way to modify block content (instead of `doc update` which has API limitations).
+Atomically replaces a block: deletes it and inserts new content at the same position. Supports the same content flags as `append` (including `--quote`, `--markdown`, `--table-header`/`--table-row`). This is the recommended way to modify block content (instead of `doc update` which has API limitations).
 
 Use `doc find` to locate the block ID first.
 
