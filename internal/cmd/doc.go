@@ -801,6 +801,30 @@ func buildBlocks(opts BlockBuildOpts) []api.DocumentBlock {
 	return blocks
 }
 
+// buildTableBlocks creates a table block with the given dimensions.
+// The Lark API auto-generates cell blocks when a table is created.
+// Cell content can be populated via separate append calls to each cell.
+func buildTableBlocks(headers []string, rows []string) []api.DocumentBlock {
+	if len(headers) == 0 {
+		return nil
+	}
+	colSize := len(headers)
+	rowSize := 1 + len(rows) // header row + data rows
+
+	table := api.DocumentBlock{
+		BlockType: 31,
+		Table: &api.TableBlock{
+			Property: &api.TableProperty{
+				RowSize:    rowSize,
+				ColumnSize: colSize,
+				HeaderRow:  true,
+			},
+		},
+	}
+
+	return []api.DocumentBlock{table}
+}
+
 // readBlocksFromStdin reads a JSON array of DocumentBlocks from stdin
 func readBlocksFromStdin() ([]api.DocumentBlock, error) {
 	data, err := io.ReadAll(os.Stdin)
@@ -933,8 +957,16 @@ Examples:
 			})
 		}
 
+		// Build table blocks if --table-header is provided
+		tableHeaders, _ := cmd.Flags().GetStringArray("table-header")
+		tableRows, _ := cmd.Flags().GetStringArray("table-row")
+		if len(tableHeaders) > 0 {
+			tableBlocks := buildTableBlocks(tableHeaders, tableRows)
+			blocks = append(blocks, tableBlocks...)
+		}
+
 		if len(blocks) == 0 {
-			output.Fatal("MISSING_ARG", fmt.Errorf("at least one content flag is required (--text, --heading, --code, --bullet, --ordered, --todo, --divider, --quote, or --json)"))
+			output.Fatal("MISSING_ARG", fmt.Errorf("at least one content flag is required (--text, --heading, --code, --bullet, --ordered, --todo, --divider, --quote, --table-header, or --json)"))
 		}
 
 		client := api.NewClient()
@@ -1748,6 +1780,8 @@ func init() {
 	docAppendCmd.Flags().Int("index", -1, "Insertion position (-1=end, 0=beginning)")
 	docAppendCmd.Flags().String("link", "", "Hyperlink URL to apply to the text")
 	docAppendCmd.Flags().String("after", "", "Insert after this block ID (mutually exclusive with --index)")
+	docAppendCmd.Flags().StringArray("table-header", nil, "Table header cells (repeatable, one per column)")
+	docAppendCmd.Flags().StringArray("table-row", nil, "Table row as pipe-separated cells: \"cell1|cell2|cell3\" (repeatable)")
 
 	// Flags for doc update
 	docUpdateCmd.Flags().String("link", "", "Hyperlink URL to apply to the text")
