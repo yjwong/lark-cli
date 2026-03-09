@@ -1298,7 +1298,8 @@ type MessageReactionListResponse struct {
 // OutputMessageSender is the simplified sender format for CLI output
 type OutputMessageSender struct {
 	ID   string `json:"id"`
-	Type string `json:"type"` // user, app, anonymous, unknown
+	Type string `json:"type"`           // user, app, anonymous, unknown
+	Name string `json:"name,omitempty"` // resolved display name
 }
 
 // OutputMessageMention is the simplified mention format for CLI output

@@ -114,10 +114,29 @@ Examples:
 			allMessages = allMessages[:msgHistoryLimit]
 		}
 
+		// Collect unique sender IDs for batch resolution
+		senderNames := make(map[string]string)
+		for _, m := range allMessages {
+			if m.Sender != nil && m.Sender.ID != "" && m.Sender.SenderType == "user" {
+				senderNames[m.Sender.ID] = "" // placeholder
+			}
+		}
+
+		// Resolve sender names (best-effort, don't fail on errors)
+		for senderID := range senderNames {
+			user, err := client.GetUser(senderID, "open_id")
+			if err == nil && user != nil && user.Name != "" {
+				senderNames[senderID] = user.Name
+			}
+		}
+
 		// Convert to output format
 		outputMessages := make([]api.OutputMessage, len(allMessages))
 		for i, m := range allMessages {
 			outputMessages[i] = convertMessage(m)
+			if outputMessages[i].Sender != nil && senderNames[outputMessages[i].Sender.ID] != "" {
+				outputMessages[i].Sender.Name = senderNames[outputMessages[i].Sender.ID]
+			}
 		}
 
 		result := api.OutputMessageList{

@@ -16,7 +16,8 @@ func (c *Client) GetUser(userID string, idType string) (*ContactUser, error) {
 	path := fmt.Sprintf("/contact/v3/users/%s?user_id_type=%s", url.PathEscape(userID), idType)
 
 	var resp GetUserResponse
-	if err := c.GetWithTenantToken(path, &resp); err != nil {
+	// GetUser requires user_access_token (not tenant_access_token)
+	if err := c.Get(path, &resp); err != nil {
 		return nil, err
 	}
 
