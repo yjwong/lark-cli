@@ -658,6 +658,24 @@ type ImageBlock struct {
 // DividerBlock represents a divider (horizontal rule) in a document
 type DividerBlock struct{}
 
+// TableBlock represents a table block (block_type 31)
+type TableBlock struct {
+	Property *TableProperty `json:"property,omitempty"`
+	Cells    []string       `json:"cells,omitempty"`
+}
+
+// TableProperty defines table dimensions and layout
+type TableProperty struct {
+	RowSize      int   `json:"row_size,omitempty"`
+	ColumnSize   int   `json:"column_size,omitempty"`
+	ColumnWidth  []int `json:"column_width,omitempty"`
+	HeaderRow    bool  `json:"header_row,omitempty"`
+	HeaderColumn bool  `json:"header_column,omitempty"`
+}
+
+// TableCellBlock represents a table cell (block_type 32) - content is in children
+type TableCellBlock struct{}
+
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
 	BlockID   string      `json:"block_id,omitempty"`
@@ -681,7 +699,10 @@ type DocumentBlock struct {
 	Quote     *TextBlock  `json:"quote,omitempty"`
 	TodoBlock *TextBlock  `json:"todo,omitempty"`
 	Divider   *DividerBlock `json:"divider,omitempty"`
-	Image     *ImageBlock `json:"image,omitempty"`
+	Image     *ImageBlock     `json:"image,omitempty"`
+	Table     *TableBlock     `json:"table,omitempty"`
+	TableCell *TableCellBlock `json:"table_cell,omitempty"`
+	Callout   *TextBlock      `json:"callout,omitempty"`
 }
 
 // --- Document API Response Types ---
