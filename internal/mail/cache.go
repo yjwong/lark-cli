@@ -62,6 +62,14 @@ func (c *Cache) init() error {
 		CREATE INDEX IF NOT EXISTS idx_envelopes_date ON envelopes(mailbox, date DESC);
 		CREATE INDEX IF NOT EXISTS idx_envelopes_from ON envelopes(mailbox, from_addr);
 		CREATE INDEX IF NOT EXISTS idx_envelopes_subject ON envelopes(mailbox, subject);
+
+		CREATE TABLE IF NOT EXISTS message_bodies (
+			mailbox TEXT NOT NULL,
+			uid INTEGER NOT NULL,
+			body BLOB NOT NULL,
+			fetched_at INTEGER NOT NULL,
+			PRIMARY KEY (mailbox, uid)
+		);
 	`
 
 	_, err := c.db.Exec(schema)
@@ -159,6 +167,10 @@ func (c *Cache) ClearMailbox(mailbox string) error {
 		return fmt.Errorf("clearing envelopes: %w", err)
 	}
 
+	if _, err := tx.Exec(`DELETE FROM message_bodies WHERE mailbox = ?`, mailbox); err != nil {
+		return fmt.Errorf("clearing message bodies: %w", err)
+	}
+
 	if _, err := tx.Exec(`DELETE FROM mailboxes WHERE name = ?`, mailbox); err != nil {
 		return fmt.Errorf("clearing mailbox state: %w", err)
 	}
@@ -174,6 +186,13 @@ type CachedEnvelope struct {
 	FromAddr  string
 	FromName  string
 	Subject   string
+}
+
+// CachedMessageBody represents a stored RFC822 message body.
+type CachedMessageBody struct {
+	UID       uint32
+	Body      []byte
+	FetchedAt time.Time
 }
 
 // InsertEnvelopes adds envelopes to the cache
@@ -207,10 +226,77 @@ func (c *Cache) InsertEnvelopes(mailbox string, envelopes []Envelope) error {
 	return tx.Commit()
 }
 
+// UpsertMessageBody stores a single RFC822 message body in the cache.
+func (c *Cache) UpsertMessageBody(mailbox string, uid uint32, body []byte) error {
+	_, err := c.db.Exec(
+		`INSERT INTO message_bodies (mailbox, uid, body, fetched_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(mailbox, uid) DO UPDATE SET
+			body = excluded.body,
+			fetched_at = excluded.fetched_at`,
+		mailbox, uid, body, time.Now().Unix(),
+	)
+	if err != nil {
+		return fmt.Errorf("storing message body: %w", err)
+	}
+	return nil
+}
+
+// GetCachedBodyUIDs returns the UIDs that already have cached bodies.
+func (c *Cache) GetCachedBodyUIDs(mailbox string) (map[uint32]bool, error) {
+	rows, err := c.db.Query(`SELECT uid FROM message_bodies WHERE mailbox = ?`, mailbox)
+	if err != nil {
+		return nil, fmt.Errorf("querying cached body UIDs: %w", err)
+	}
+	defer rows.Close()
+
+	uids := make(map[uint32]bool)
+	for rows.Next() {
+		var uid uint32
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scanning cached body UID: %w", err)
+		}
+		uids[uid] = true
+	}
+	return uids, nil
+}
+
+// CountMessageBodies returns the number of cached bodies for a mailbox.
+func (c *Cache) CountMessageBodies(mailbox string) (int, error) {
+	var count int
+	err := c.db.QueryRow(`SELECT COUNT(*) FROM message_bodies WHERE mailbox = ?`, mailbox).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting message bodies: %w", err)
+	}
+	return count, nil
+}
+
+// GetMessageBody retrieves a cached RFC822 message by UID.
+func (c *Cache) GetMessageBody(mailbox string, uid uint32) (*CachedMessageBody, error) {
+	row := c.db.QueryRow(
+		`SELECT uid, body, fetched_at FROM message_bodies WHERE mailbox = ? AND uid = ?`,
+		mailbox, uid,
+	)
+
+	var msg CachedMessageBody
+	var fetchedAt int64
+	err := row.Scan(&msg.UID, &msg.Body, &fetchedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying cached message body: %w", err)
+	}
+
+	msg.FetchedAt = time.Unix(fetchedAt, 0)
+	return &msg, nil
+}
+
 // SearchOptions specifies search filters
 type SearchOptions struct {
 	From    string
 	Subject string
+	Body    string
 	Since   *time.Time
 	Before  *time.Time
 	Limit   int
@@ -251,30 +337,38 @@ func (c *Cache) Search(mailbox string, opts *SearchOptions) (*SearchResult, erro
 	row.Scan(&result.TotalCached)
 
 	// Build query
-	query := `SELECT uid, message_id, date, from_addr, from_name, subject
-			  FROM envelopes WHERE mailbox = ?`
+	query := `SELECT e.uid, e.message_id, e.date, e.from_addr, e.from_name, e.subject
+			  FROM envelopes e`
+	if opts != nil && opts.Body != "" {
+		query += ` JOIN message_bodies mb ON mb.mailbox = e.mailbox AND mb.uid = e.uid`
+	}
+	query += ` WHERE e.mailbox = ?`
 	args := []any{mailbox}
 
 	if opts != nil {
 		if opts.From != "" {
-			query += ` AND from_addr LIKE ?`
+			query += ` AND e.from_addr LIKE ?`
 			args = append(args, "%"+opts.From+"%")
 		}
 		if opts.Subject != "" {
-			query += ` AND subject LIKE ?`
+			query += ` AND e.subject LIKE ?`
 			args = append(args, "%"+opts.Subject+"%")
 		}
+		if opts.Body != "" {
+			query += ` AND CAST(mb.body AS TEXT) LIKE ?`
+			args = append(args, "%"+opts.Body+"%")
+		}
 		if opts.Since != nil {
-			query += ` AND date >= ?`
+			query += ` AND e.date >= ?`
 			args = append(args, opts.Since.Unix())
 		}
 		if opts.Before != nil {
-			query += ` AND date < ?`
+			query += ` AND e.date < ?`
 			args = append(args, opts.Before.Unix())
 		}
 	}
 
-	query += ` ORDER BY date DESC`
+	query += ` ORDER BY e.date DESC`
 
 	limit := 50
 	if opts != nil && opts.Limit > 0 {

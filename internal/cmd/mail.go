@@ -218,6 +218,7 @@ var mailListCmd = &cobra.Command{
 var (
 	mailSyncMailbox string
 	mailSyncWorkers int
+	mailSyncBodies  bool
 )
 
 var mailSyncCmd = &cobra.Command{
@@ -231,11 +232,13 @@ The cache is used for fast local searching with 'lark mail search'.
 
 Examples:
   lark mail sync
-  lark mail sync --workers 20`,
+  lark mail sync --workers 20
+  lark mail sync --include-bodies`,
 	Run: func(cmd *cobra.Command, args []string) {
 		opts := &mail.SyncOptions{
-			Workers:  mailSyncWorkers,
-			Progress: os.Stderr,
+			Workers:       mailSyncWorkers,
+			IncludeBodies: mailSyncBodies,
+			Progress:      os.Stderr,
 		}
 
 		result, err := mail.Sync(mailSyncMailbox, opts)
@@ -253,6 +256,7 @@ var (
 	mailSearchMailbox string
 	mailSearchFrom    string
 	mailSearchSubject string
+	mailSearchBody    string
 	mailSearchSince   string
 	mailSearchBefore  string
 	mailSearchLimit   int
@@ -264,16 +268,18 @@ var mailSearchCmd = &cobra.Command{
 	Long: `Search cached email metadata locally (no network calls).
 
 The search uses the local cache which is updated by 'lark mail sync'.
+Body search requires syncing with '--include-bodies' first.
 Results include cache freshness information so you know if data is stale.
 
 Examples:
   lark mail search
   lark mail search --from alice@example.com
   lark mail search --subject "Q4 Report" --since 2025-01-01
+  lark mail search --body "sender authentication"
   lark mail search --mailbox INBOX --limit 20`,
 	Run: func(cmd *cobra.Command, args []string) {
 		opts, err := mail.ParseSearchOptions(
-			mailSearchFrom, mailSearchSubject,
+			mailSearchFrom, mailSearchSubject, mailSearchBody,
 			mailSearchSince, mailSearchBefore,
 			mailSearchLimit,
 		)
@@ -472,11 +478,13 @@ func init() {
 	// mail sync flags
 	mailSyncCmd.Flags().StringVarP(&mailSyncMailbox, "mailbox", "m", "INBOX", "Mailbox to sync")
 	mailSyncCmd.Flags().IntVarP(&mailSyncWorkers, "workers", "w", 10, "Number of parallel connections for initial sync")
+	mailSyncCmd.Flags().BoolVar(&mailSyncBodies, "include-bodies", false, "Fetch and cache full RFC822 message bodies for local analysis")
 
 	// mail search flags
 	mailSearchCmd.Flags().StringVarP(&mailSearchMailbox, "mailbox", "m", "INBOX", "Mailbox to search")
 	mailSearchCmd.Flags().StringVar(&mailSearchFrom, "from", "", "Filter by sender address")
 	mailSearchCmd.Flags().StringVar(&mailSearchSubject, "subject", "", "Filter by subject")
+	mailSearchCmd.Flags().StringVar(&mailSearchBody, "body", "", "Filter by message body text (requires prior sync with --include-bodies)")
 	mailSearchCmd.Flags().StringVar(&mailSearchSince, "since", "", "Emails since date (YYYY-MM-DD)")
 	mailSearchCmd.Flags().StringVar(&mailSearchBefore, "before", "", "Emails before date (YYYY-MM-DD)")
 	mailSearchCmd.Flags().IntVar(&mailSearchLimit, "limit", 50, "Maximum results")

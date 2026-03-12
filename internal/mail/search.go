@@ -16,10 +16,11 @@ func Search(mailbox string, opts *SearchOptions) (*SearchResult, error) {
 }
 
 // ParseSearchOptions parses command-line style options into SearchOptions
-func ParseSearchOptions(from, subject, since, before string, limit int) (*SearchOptions, error) {
+func ParseSearchOptions(from, subject, body, since, before string, limit int) (*SearchOptions, error) {
 	opts := &SearchOptions{
 		From:    from,
 		Subject: subject,
+		Body:    body,
 		Limit:   limit,
 	}
 

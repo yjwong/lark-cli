@@ -12,16 +12,18 @@ import (
 
 // SyncOptions configures the sync operation
 type SyncOptions struct {
-	Workers  int
-	Progress io.Writer // If set, progress is written here
+	Workers       int
+	IncludeBodies bool
+	Progress      io.Writer // If set, progress is written here
 }
 
 // SyncResult contains the result of a sync operation
 type SyncResult struct {
-	Mailbox     string `json:"mailbox"`
-	NewMessages int    `json:"new_messages"`
-	TotalCached int    `json:"total_cached"`
-	Message     string `json:"message"`
+	Mailbox      string `json:"mailbox"`
+	NewMessages  int    `json:"new_messages"`
+	TotalCached  int    `json:"total_cached"`
+	BodiesCached int    `json:"bodies_cached,omitempty"`
+	Message      string `json:"message"`
 }
 
 // Sync fetches new messages from the server and updates the cache
@@ -85,6 +87,14 @@ func Sync(mailbox string, opts *SyncOptions) (*SyncResult, error) {
 		return nil, err
 	}
 
+	cachedBodyUIDs := map[uint32]bool{}
+	if opts.IncludeBodies {
+		cachedBodyUIDs, err = cache.GetCachedBodyUIDs(mailbox)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Get all server UIDs
 	if opts.Progress != nil {
 		fmt.Fprintf(opts.Progress, "Checking for new messages...\n")
@@ -112,32 +122,75 @@ func Sync(mailbox string, opts *SyncOptions) (*SyncResult, error) {
 		}
 
 		result.TotalCached = len(cachedUIDs)
-		result.Message = "already up to date"
-		return result, nil
-	}
-
-	if opts.Progress != nil {
-		fmt.Fprintf(opts.Progress, "Found %d messages to sync\n", len(missingUIDs))
-	}
-
-	// Fetch missing UIDs in parallel
-	var newCount int
-	if opts.Workers > 1 && len(missingUIDs) > 100 {
-		newCount, err = fetchMissingUIDsParallel(cache, mailbox, mbox.UIDValidity, missingUIDs, opts)
-	} else {
-		newCount, err = fetchMissingUIDs(cache, mailbox, mbox.UIDValidity, missingUIDs, opts)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	result.NewMessages = newCount
-	result.TotalCached = len(cachedUIDs) + newCount
-
-	if result.NewMessages == 0 {
+		if opts.IncludeBodies {
+			bodyCount, err := cache.CountMessageBodies(mailbox)
+			if err != nil {
+				return nil, err
+			}
+			result.BodiesCached = bodyCount
+		}
 		result.Message = "already up to date"
 	} else {
-		result.Message = fmt.Sprintf("synced %d new messages", result.NewMessages)
+		if opts.Progress != nil {
+			fmt.Fprintf(opts.Progress, "Found %d messages to sync\n", len(missingUIDs))
+		}
+
+		// Fetch missing UIDs in parallel
+		var newCount int
+		if opts.Workers > 1 && len(missingUIDs) > 100 {
+			newCount, err = fetchMissingUIDsParallel(cache, mailbox, mbox.UIDValidity, missingUIDs, opts)
+		} else {
+			newCount, err = fetchMissingUIDs(cache, mailbox, mbox.UIDValidity, missingUIDs, opts)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		result.NewMessages = newCount
+		result.TotalCached = len(cachedUIDs) + newCount
+
+		if result.NewMessages == 0 {
+			result.Message = "already up to date"
+		} else {
+			result.Message = fmt.Sprintf("synced %d new messages", result.NewMessages)
+		}
+	}
+
+	if opts.IncludeBodies {
+		var missingBodyUIDs []imap.UID
+		for _, uid := range serverUIDs {
+			if !cachedBodyUIDs[uint32(uid)] {
+				missingBodyUIDs = append(missingBodyUIDs, uid)
+			}
+		}
+
+		bodyCount, err := cache.CountMessageBodies(mailbox)
+		if err != nil {
+			return nil, err
+		}
+		result.BodiesCached = bodyCount
+
+		if len(missingBodyUIDs) > 0 {
+			if opts.Progress != nil {
+				fmt.Fprintf(opts.Progress, "Found %d message bodies to cache\n", len(missingBodyUIDs))
+			}
+
+			if opts.Workers > 1 && len(missingBodyUIDs) > 25 {
+				if err := fetchMissingBodiesParallel(cache, mailbox, missingBodyUIDs, opts); err != nil {
+					return nil, err
+				}
+			} else {
+				if err := fetchMissingBodies(cache, mailbox, missingBodyUIDs, opts); err != nil {
+					return nil, err
+				}
+			}
+
+			bodyCount, err = cache.CountMessageBodies(mailbox)
+			if err != nil {
+				return nil, err
+			}
+			result.BodiesCached = bodyCount
+		}
 	}
 
 	return result, nil
@@ -354,4 +407,144 @@ func fetchMissingUIDsParallel(cache *Cache, mailbox string, uidValidity uint32, 
 	}
 
 	return totalFetched, nil
+}
+
+func fetchMissingBodies(cache *Cache, mailbox string, uids []imap.UID, opts *SyncOptions) error {
+	client, err := Connect()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if _, err := client.SelectMailbox(mailbox); err != nil {
+		return err
+	}
+
+	for i, uid := range uids {
+		body, _, err := client.FetchMessage(uid)
+		if err != nil {
+			return err
+		}
+		if err := cache.UpsertMessageBody(mailbox, uint32(uid), body); err != nil {
+			return err
+		}
+
+		if opts.Progress != nil {
+			fmt.Fprintf(opts.Progress, "\rCaching bodies: %d / %d messages (%.1f%%)", i+1, len(uids), float64(i+1)/float64(len(uids))*100)
+		}
+	}
+
+	if opts.Progress != nil {
+		fmt.Fprintln(opts.Progress)
+	}
+
+	return nil
+}
+
+func fetchMissingBodiesParallel(cache *Cache, mailbox string, uids []imap.UID, opts *SyncOptions) error {
+	numWorkers := opts.Workers
+	if numWorkers > len(uids) {
+		numWorkers = len(uids)
+	}
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+
+	type bodyBatch struct {
+		uid  imap.UID
+		body []byte
+		err  error
+	}
+
+	batchChan := make(chan bodyBatch, numWorkers*2)
+	var fetched atomic.Uint64
+	var wg sync.WaitGroup
+
+	var progressDone chan struct{}
+	if opts.Progress != nil {
+		progressDone = make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-progressDone:
+					return
+				case <-ticker.C:
+					f := fetched.Load()
+					fmt.Fprintf(opts.Progress, "\rCaching bodies: %d / %d messages (%.1f%%)", f, len(uids), float64(f)/float64(len(uids))*100)
+				}
+			}
+		}()
+	}
+
+	uidsPerWorker := len(uids) / numWorkers
+	remainder := len(uids) % numWorkers
+	start := 0
+
+	for i := 0; i < numWorkers; i++ {
+		count := uidsPerWorker
+		if i < remainder {
+			count++
+		}
+		if count == 0 {
+			continue
+		}
+
+		workerUIDs := uids[start : start+count]
+		start += count
+
+		wg.Add(1)
+		go func(myUIDs []imap.UID) {
+			defer wg.Done()
+
+			client, err := Connect()
+			if err != nil {
+				batchChan <- bodyBatch{err: fmt.Errorf("connect: %w", err)}
+				return
+			}
+			defer client.Close()
+
+			if _, err := client.SelectMailbox(mailbox); err != nil {
+				batchChan <- bodyBatch{err: fmt.Errorf("select: %w", err)}
+				return
+			}
+
+			for _, uid := range myUIDs {
+				body, _, err := client.FetchMessage(uid)
+				if err != nil {
+					batchChan <- bodyBatch{err: fmt.Errorf("fetch body %d: %w", uid, err)}
+					return
+				}
+				batchChan <- bodyBatch{uid: uid, body: body}
+				fetched.Add(1)
+			}
+		}(workerUIDs)
+	}
+
+	go func() {
+		wg.Wait()
+		close(batchChan)
+	}()
+
+	var writeErr error
+	for b := range batchChan {
+		if b.err != nil {
+			writeErr = b.err
+			continue
+		}
+		if writeErr != nil {
+			continue
+		}
+		if err := cache.UpsertMessageBody(mailbox, uint32(b.uid), b.body); err != nil {
+			writeErr = err
+		}
+	}
+
+	if opts.Progress != nil {
+		close(progressDone)
+		fmt.Fprintf(opts.Progress, "\rCaching bodies: %d / %d messages (100.0%%)\n", len(uids), len(uids))
+	}
+
+	return writeErr
 }

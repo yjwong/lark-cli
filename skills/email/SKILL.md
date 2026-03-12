@@ -51,6 +51,9 @@ lark mail sync
 # Sync with more parallel connections (faster for large mailboxes)
 lark mail sync --workers 20
 
+# Sync and cache full message bodies for later analysis
+lark mail sync --include-bodies
+
 # Sync specific mailbox
 lark mail sync --mailbox Sent
 ```
@@ -58,10 +61,12 @@ lark mail sync --mailbox Sent
 Flags:
 - `--mailbox`, `-m`: Mailbox to sync (default: INBOX)
 - `--workers`, `-w`: Number of parallel connections (default: 10)
+- `--include-bodies`: Also fetch and cache full RFC822 message bodies. Use when you need body-level analysis or plan to inspect many emails.
 
 **Important**:
 - Run sync before searching if you need fresh data
 - Sync is resumable - if interrupted, running it again only fetches messages not already cached
+- `--include-bodies` is intentionally opt-in because it is slower and stores more local data than header-only sync
 
 ### Search Emails
 Search the local cache (fast, no network calls):
@@ -75,6 +80,9 @@ lark mail search --from alice@example.com
 
 # Filter by subject
 lark mail search --subject "Q4 Report"
+
+# Filter by body text (requires prior sync with --include-bodies)
+lark mail search --body "sender authentication"
 
 # Filter by date range
 lark mail search --since 2025-01-01 --before 2025-01-15
@@ -90,6 +98,10 @@ lark mail search --mailbox Sent
 ```bash
 lark mail show --uid <uid>
 ```
+
+**Body search note**:
+- `--body` only matches messages whose full RFC822 body was cached via `lark mail sync --include-bodies`
+- messages synced without `--include-bodies` remain searchable by sender/subject/date only
 
 The UID is obtained from search results.
 
@@ -162,6 +174,7 @@ All commands output JSON.
   "mailbox": "INBOX",
   "new_messages": 5,
   "total_cached": 1523,
+  "bodies_cached": 1523,
   "message": "synced 5 new messages"
 }
 ```
@@ -224,4 +237,3 @@ lark auth status
    ```bash
    lark mail fetch --uid 4521
    ```
-
