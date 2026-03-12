@@ -49,11 +49,7 @@ Examples:
 		}
 
 		// Determine time range
-		tz := config.GetTimezone()
-		loc, err := time.LoadLocation(tz)
-		if err != nil {
-			loc = time.Local
-		}
+		loc := config.LoadTimezone()
 		now := time.Now().In(loc)
 
 		var startTime, endTime time.Time

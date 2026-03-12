@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -114,10 +115,29 @@ Examples:
 			allMessages = allMessages[:msgHistoryLimit]
 		}
 
+		// Collect unique sender IDs for batch resolution
+		senderNames := make(map[string]string)
+		for _, m := range allMessages {
+			if m.Sender != nil && m.Sender.ID != "" && m.Sender.SenderType == "user" {
+				senderNames[m.Sender.ID] = "" // placeholder
+			}
+		}
+
+		// Resolve sender names (best-effort, don't fail on errors)
+		for senderID := range senderNames {
+			user, err := client.GetUser(senderID, "open_id")
+			if err == nil && user != nil && user.Name != "" {
+				senderNames[senderID] = user.Name
+			}
+		}
+
 		// Convert to output format
 		outputMessages := make([]api.OutputMessage, len(allMessages))
 		for i, m := range allMessages {
 			outputMessages[i] = convertMessage(m)
+			if outputMessages[i].Sender != nil && senderNames[outputMessages[i].Sender.ID] != "" {
+				outputMessages[i].Sender.Name = senderNames[outputMessages[i].Sender.ID]
+			}
 		}
 
 		result := api.OutputMessageList{
@@ -284,9 +304,15 @@ var (
 	msgSendToType   string
 	msgSendText     string
 	msgSendImages   []string
+	msgSendFiles    []string
 	msgSendRootID   string
 	msgSendParentID string
 	msgSendMsgType  string
+
+	// msg edit flags
+	msgEditMessageID string
+	msgEditText      string
+	msgEditMsgType   string
 )
 
 var msgSendCmd = &cobra.Command{
@@ -324,6 +350,12 @@ Examples:
 	# Image only
 	lark msg send --to oc_xxx --image ./screenshot.png
 
+	# Send file
+	lark msg send --to oc_xxx --file ./report.pdf
+
+	# Send file with a message
+	lark msg send --to oc_xxx --text "Here's the report" --file ./report.pdf
+
 	# Reply in thread
 	lark msg send --to oc_xxx --parent-id om_xxx --text "Replying here"
 
@@ -333,8 +365,12 @@ Examples:
 		if msgSendTo == "" {
 			output.Fatalf("VALIDATION_ERROR", "--to is required")
 		}
-		if msgSendText == "" && len(msgSendImages) == 0 {
-			output.Fatalf("VALIDATION_ERROR", "--text or --image is required")
+		if msgSendText == "" && len(msgSendImages) == 0 && len(msgSendFiles) == 0 {
+			output.Fatalf("VALIDATION_ERROR", "--text, --image, or --file is required")
+		}
+		if len(msgSendFiles) > 0 && (len(msgSendImages) > 0 || msgSendText != "") {
+			// Files must be sent as separate messages; mixing not supported by Lark API
+			output.Fatalf("VALIDATION_ERROR", "--file cannot be combined with --text or --image (send files as separate messages)")
 		}
 		if msgSendMsgType != "post" && msgSendMsgType != "text" {
 			output.Fatalf("VALIDATION_ERROR", "--msg-type must be 'post' or 'text'")
@@ -342,7 +378,7 @@ Examples:
 		if msgSendMsgType == "text" && len(msgSendImages) > 0 {
 			output.Fatalf("VALIDATION_ERROR", "--image is only supported with --msg-type post")
 		}
-		if msgSendMsgType == "text" && msgSendText == "" {
+		if msgSendMsgType == "text" && msgSendText == "" && len(msgSendFiles) == 0 {
 			output.Fatalf("VALIDATION_ERROR", "--text is required with --msg-type text")
 		}
 		if msgSendRootID != "" && msgSendParentID == "" {
@@ -356,6 +392,47 @@ Examples:
 		}
 
 		client := api.NewClient()
+
+		// Handle file sends (one message per file)
+		if len(msgSendFiles) > 0 {
+			var results []api.OutputSendMessage
+			for _, filePath := range msgSendFiles {
+				fileType := inferFileType(filePath)
+				fileKey, err := client.UploadFile(filePath, fileType)
+				if err != nil {
+					if errors.Is(err, os.ErrNotExist) {
+						output.Fatalf("FILE_ERROR", "file not found: %s", filePath)
+					}
+					output.Fatal("API_ERROR", err)
+				}
+				fileContent, err := buildFileContent(fileKey, fileType)
+				if err != nil {
+					output.Fatal("VALIDATION_ERROR", err)
+				}
+				var resp *api.SendMessageResponse
+				if msgSendParentID != "" {
+					resp, err = client.ReplyMessage(msgSendParentID, "file", fileContent, msgSendRootID, true)
+				} else {
+					resp, err = client.SendMessage(receiveIDType, msgSendTo, "file", fileContent)
+				}
+				if err != nil {
+					output.Fatal("API_ERROR", err)
+				}
+				results = append(results, api.OutputSendMessage{
+					Success:    true,
+					MessageID:  resp.Data.MessageID,
+					ChatID:     resp.Data.ChatID,
+					CreateTime: formatMessageTime(resp.Data.CreateTime),
+				})
+			}
+			if len(results) == 1 {
+				output.JSON(results[0])
+			} else {
+				output.JSON(results)
+			}
+			return
+		}
+
 		imageKeys := make([]string, 0, len(msgSendImages))
 		for _, imagePath := range msgSendImages {
 			imageKey, err := client.UploadMessageImage(imagePath)
@@ -368,8 +445,14 @@ Examples:
 			imageKeys = append(imageKeys, imageKey)
 		}
 
-		// Build message content
+		// Auto-upgrade text -> post when mentions or markdown are detected
 		msgType := msgSendMsgType
+		if msgType == "text" && (strings.Contains(msgSendText, "@{") || strings.Contains(msgSendText, "**")) {
+			msgType = "post"
+			fmt.Fprintf(os.Stderr, "note: auto-upgraded --msg-type from text to post (mentions/markdown detected)\n")
+		}
+
+		// Build message content
 		var content string
 		var err error
 		if msgType == "text" {
@@ -792,17 +875,21 @@ func detectIDType(id string) string {
 }
 
 // unescapeString processes escape sequences like \n, \t, \r, etc.
-// Users can send literal backslash-n by escaping as \\n
+// Uses manual replacement instead of strconv.Unquote to be resilient against
+// shell-injected escapes (e.g. fish shell's \!) that would cause Unquote to
+// fail on the entire string, leaving ALL escapes unprocessed.
 func unescapeString(s string) string {
-	// Wrap string in quotes and use strconv.Unquote to process escape sequences
-	// This handles \n -> newline, \t -> tab, \r -> carriage return, \\ -> backslash, etc.
-	quoted := `"` + s + `"`
-	unquoted, err := strconv.Unquote(quoted)
-	if err != nil {
-		// If unquoting fails (e.g., malformed escape), return original string
-		return s
-	}
-	return unquoted
+	r := strings.NewReplacer(
+		`\\`, "\x00BACKSLASH\x00", // preserve literal \\
+		`\n`, "\n",
+		`\t`, "\t",
+		`\r`, "\r",
+	)
+	result := r.Replace(s)
+	result = strings.ReplaceAll(result, "\x00BACKSLASH\x00", `\`)
+	// Strip known shell-injected escapes (fish shell escapes ! as \!)
+	result = strings.ReplaceAll(result, `\!`, "!")
+	return result
 }
 
 // buildTextContent creates JSON content for text messages.
@@ -1043,6 +1130,39 @@ func buildPostElements(elements []postElement) []map[string]interface{} {
 	return content
 }
 
+// inferFileType maps a file extension to a Lark file_type value.
+// Lark accepts: opus, mp4, pdf, doc, xls, ppt, stream (generic)
+func inferFileType(filePath string) string {
+	switch strings.ToLower(filepath.Ext(filePath)) {
+	case ".pdf":
+		return "pdf"
+	case ".doc", ".docx":
+		return "doc"
+	case ".xls", ".xlsx":
+		return "xls"
+	case ".ppt", ".pptx":
+		return "ppt"
+	case ".mp4":
+		return "mp4"
+	case ".opus":
+		return "opus"
+	default:
+		return "stream"
+	}
+}
+
+// buildFileContent creates the JSON content body for a file message.
+func buildFileContent(fileKey, fileType string) (string, error) {
+	payload := map[string]string{
+		"file_key": fileKey,
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func buildPostTextStyle(isBold, isItalic bool) []string {
 	var style []string
 	if isBold {
@@ -1055,6 +1175,57 @@ func buildPostTextStyle(isBold, isItalic bool) []string {
 }
 
 // --- msg recall ---
+
+var msgEditCmd = &cobra.Command{
+	Use:   "edit",
+	Short: "Edit a sent message",
+	Long: `Edit a previously sent message in-place.
+
+Only the bot's own messages can be edited.
+
+Examples:
+  lark msg edit --message-id om_xxx --text "Updated text"
+  lark msg edit --message-id om_xxx --text "**Bold** and @{ou_xxx} mention"`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if msgEditMessageID == "" {
+			output.Fatalf("VALIDATION_ERROR", "--message-id is required")
+		}
+		if msgEditText == "" {
+			output.Fatalf("VALIDATION_ERROR", "--text is required")
+		}
+		if msgEditMsgType != "post" && msgEditMsgType != "text" {
+			output.Fatalf("VALIDATION_ERROR", "--msg-type must be 'post' or 'text'")
+		}
+
+		// Auto-upgrade text -> post when mentions or markdown are detected
+		msgType := msgEditMsgType
+		if msgType == "text" && (strings.Contains(msgEditText, "@{") || strings.Contains(msgEditText, "**")) {
+			msgType = "post"
+			fmt.Fprintf(os.Stderr, "note: auto-upgraded --msg-type from text to post (mentions/markdown detected)\n")
+		}
+
+		var content string
+		var err error
+		if msgType == "text" {
+			content, err = buildTextContent(msgEditText)
+		} else {
+			content, err = buildMarkdownPostContent(msgEditText)
+		}
+		if err != nil {
+			output.Fatal("VALIDATION_ERROR", err)
+		}
+
+		client := api.NewClient()
+		if err := client.EditMessage(msgEditMessageID, msgType, content); err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		output.JSON(map[string]interface{}{
+			"success":    true,
+			"message_id": msgEditMessageID,
+		})
+	},
+}
 
 var msgRecallCmd = &cobra.Command{
 	Use:   "recall <message-id>",
@@ -1105,6 +1276,7 @@ func init() {
 	msgSendCmd.Flags().StringVar(&msgSendMsgType, "msg-type", "post", "Message type: post (default) or text")
 	msgSendCmd.Flags().StringVar(&msgSendParentID, "parent-id", "", "Parent message ID to reply to (optional)")
 	msgSendCmd.Flags().StringVar(&msgSendRootID, "root-id", "", "Root message ID for thread replies (optional)")
+	msgSendCmd.Flags().StringSliceVar(&msgSendFiles, "file", nil, "File path to send (repeatable; each file sent as a separate message)")
 
 	// msg react flags
 	msgReactCmd.Flags().StringVar(&msgReactMessageID, "message-id", "", "Message ID to react to (required)")
@@ -1120,10 +1292,16 @@ func init() {
 	msgReactRemoveCmd.Flags().StringVar(&msgReactRemoveMessageID, "message-id", "", "Message ID to remove reaction from (required)")
 	msgReactRemoveCmd.Flags().StringVar(&msgReactRemoveReactionID, "reaction-id", "", "Reaction ID to remove (required)")
 
+	// msg edit flags
+	msgEditCmd.Flags().StringVar(&msgEditMessageID, "message-id", "", "Message ID to edit (required)")
+	msgEditCmd.Flags().StringVar(&msgEditText, "text", "", "New message text (markdown-lite)")
+	msgEditCmd.Flags().StringVar(&msgEditMsgType, "msg-type", "post", "Message type: post (default) or text")
+
 	// Register subcommands
 	msgCmd.AddCommand(msgHistoryCmd)
 	msgCmd.AddCommand(msgResourceCmd)
 	msgCmd.AddCommand(msgSendCmd)
+	msgCmd.AddCommand(msgEditCmd)
 	msgCmd.AddCommand(msgReactCmd)
 	msgCmd.AddCommand(msgRecallCmd)
 

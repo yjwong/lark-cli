@@ -11,6 +11,7 @@ Retrieve chat message history, send messages, manage reactions, and search for c
 
 - Send markdown-lite messages with links and mentions
 - Send images with `--image` and `{{image}}` placement
+- Send files (PDF, PPTX, DOCX, XLSX, etc.) with `--file`
 - Reply to messages and threads with `--parent-id` / `--root-id`
 - Message recall/delete for cleanup
 - Add/list/remove emoji reactions
@@ -47,6 +48,12 @@ lark chat search "project team"
 lark msg react --message-id om_123456789abcdef --reaction SMILE
 lark msg react list --message-id om_123456789abcdef
 lark msg react remove --message-id om_123456789abcdef --reaction-id ZCaCIjUBVVWSrm5L-3ZTw...
+```
+
+**Send file:**
+```bash
+lark msg send --to oc_12345 --file ./report.pdf
+lark msg send --to oc_12345 --file ./deck.pptx
 ```
 
 **Download resource:**
@@ -99,6 +106,7 @@ Available flags:
 - `--to-type`: Explicitly specify ID type (`open_id`, `user_id`, `email`, `chat_id`) - auto-detected if omitted
 - `--text`: Message text content (markdown-lite). Use `{{image}}` to place images.
 - `--image`: Image file path (repeatable)
+- `--file`: File path to send (repeatable; each file sent as a separate message). Supported: pdf, doc/docx, xls/xlsx, ppt/pptx, mp4, opus, and any other file (sent as `stream`). **Cannot be combined with `--text` or `--image`.** Max file size: 30MB.
 - `--msg-type`: Message type: `post` (default) or `text`
 - `--parent-id`: Parent message ID to reply in thread (optional)
 - `--root-id`: Root message ID for thread replies (optional)

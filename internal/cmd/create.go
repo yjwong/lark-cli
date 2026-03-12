@@ -59,10 +59,7 @@ Examples:
 
 		// Parse timezone
 		tz := config.GetTimezone()
-		loc, err := time.LoadLocation(tz)
-		if err != nil {
-			loc = time.Local
-		}
+		loc := config.LoadTimezone()
 
 		// Parse start time
 		startTime, err := timex.Parse(createStart, loc)

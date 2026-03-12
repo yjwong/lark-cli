@@ -39,13 +39,11 @@ func (c *Client) ListMessages(containerIDType, containerID string, opts *ListMes
 		containerIDType = "chat"
 	}
 
-	pageSize := 20
-	if opts != nil && opts.PageSize > 0 {
-		pageSize = opts.PageSize
-		if pageSize > 50 {
-			pageSize = 50
-		}
+	reqSize := 0
+	if opts != nil {
+		reqSize = opts.PageSize
 	}
+	pageSize := ClampPageSize(reqSize, 20, 50)
 
 	// Build query parameters
 	params := url.Values{}
@@ -75,8 +73,8 @@ func (c *Client) ListMessages(containerIDType, containerID string, opts *ListMes
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
@@ -84,13 +82,11 @@ func (c *Client) ListMessages(containerIDType, containerID string, opts *ListMes
 
 // ListMessageReactions retrieves reactions for a message
 func (c *Client) ListMessageReactions(messageID string, opts *ListMessageReactionsOptions) ([]MessageReaction, bool, string, error) {
-	pageSize := 20
-	if opts != nil && opts.PageSize > 0 {
-		pageSize = opts.PageSize
-		if pageSize > 50 {
-			pageSize = 50
-		}
+	reqSize := 0
+	if opts != nil {
+		reqSize = opts.PageSize
 	}
+	pageSize := ClampPageSize(reqSize, 20, 50)
 
 	params := url.Values{}
 	params.Set("page_size", fmt.Sprintf("%d", pageSize))
@@ -113,8 +109,8 @@ func (c *Client) ListMessageReactions(messageID string, opts *ListMessageReactio
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
@@ -187,8 +183,8 @@ func (c *Client) UploadMessageImage(filePath string) (string, error) {
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if uploadResp.Code != 0 {
-		return "", fmt.Errorf("API error %d: %s", uploadResp.Code, uploadResp.Msg)
+	if err := uploadResp.Err(); err != nil {
+		return "", err
 	}
 
 	if uploadResp.Data.ImageKey == "" {
@@ -196,6 +192,76 @@ func (c *Client) UploadMessageImage(filePath string) (string, error) {
 	}
 
 	return uploadResp.Data.ImageKey, nil
+}
+
+// UploadFile uploads a file for message sending and returns the file key.
+// fileType must be one of: opus, mp4, pdf, doc, xls, ppt, stream
+func (c *Client) UploadFile(filePath, fileType string) (string, error) {
+	if err := auth.EnsureValidTenantToken(); err != nil {
+		return "", err
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	if err := writer.WriteField("file_type", fileType); err != nil {
+		return "", fmt.Errorf("failed to write file_type: %w", err)
+	}
+	if err := writer.WriteField("file_name", filepath.Base(filePath)); err != nil {
+		return "", fmt.Errorf("failed to write file_name: %w", err)
+	}
+
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	if err != nil {
+		return "", fmt.Errorf("failed to create file form: %w", err)
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return "", fmt.Errorf("failed to finalize upload: %w", err)
+	}
+
+	url := baseURL + "/im/v1/files"
+	req, err := http.NewRequest("POST", url, &buf)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token := auth.GetTenantTokenStore().GetAccessToken()
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var uploadResp UploadFileResponse
+	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if err := uploadResp.Err(); err != nil {
+		return "", err
+	}
+
+	if uploadResp.Data.FileKey == "" {
+		return "", fmt.Errorf("API error: missing file_key")
+	}
+
+	return uploadResp.Data.FileKey, nil
 }
 
 // SendMessage sends a message to a user or chat
@@ -217,8 +283,8 @@ func (c *Client) SendMessage(receiveIDType, receiveID, msgType, content string) 
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return &resp, nil
@@ -244,11 +310,35 @@ func (c *Client) ReplyMessage(messageID, msgType, content, rootID string, replyI
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return &resp, nil
+}
+
+// EditMessage edits a sent message
+// messageID: the ID of the message to edit
+// msgType: "text" or "post"
+// content: JSON string of new message content
+func (c *Client) EditMessage(messageID, msgType, content string) error {
+	path := fmt.Sprintf("/im/v1/messages/%s", messageID)
+
+	req := EditMessageRequest{
+		MsgType: msgType,
+		Content: content,
+	}
+
+	var resp BaseResponse
+	if err := c.PutWithTenantToken(path, req, &resp); err != nil {
+		return err
+	}
+
+	if err := resp.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // RecallMessage recalls/deletes a message
@@ -261,8 +351,8 @@ func (c *Client) RecallMessage(messageID string) error {
 		return err
 	}
 
-	if resp.Code != 0 {
-		return fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return err
 	}
 
 	return nil
@@ -277,8 +367,8 @@ func (c *Client) DeleteMessageReaction(messageID, reactionID string) (*MessageRe
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data, nil
@@ -300,8 +390,8 @@ func (c *Client) AddMessageReaction(messageID, emojiType string) (*MessageReacti
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data, nil

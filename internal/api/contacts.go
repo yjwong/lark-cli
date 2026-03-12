@@ -16,12 +16,13 @@ func (c *Client) GetUser(userID string, idType string) (*ContactUser, error) {
 	path := fmt.Sprintf("/contact/v3/users/%s?user_id_type=%s", url.PathEscape(userID), idType)
 
 	var resp GetUserResponse
-	if err := c.GetWithTenantToken(path, &resp); err != nil {
+	// GetUser requires user_access_token (not tenant_access_token)
+	if err := c.Get(path, &resp); err != nil {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.User, nil
@@ -32,12 +33,7 @@ func (c *Client) GetUser(userID string, idType string) (*ContactUser, error) {
 // pageSize: number of results per page (max 50)
 // pageToken: pagination token (empty for first page)
 func (c *Client) ListUsersByDepartment(deptID string, pageSize int, pageToken string) ([]ContactUser, bool, string, error) {
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	if pageSize > 50 {
-		pageSize = 50
-	}
+	pageSize = ClampPageSize(pageSize, 50, 50)
 
 	path := fmt.Sprintf("/contact/v3/users/find_by_department?department_id=%s&department_id_type=open_department_id&user_id_type=open_id&page_size=%d",
 		url.QueryEscape(deptID), pageSize)
@@ -51,8 +47,8 @@ func (c *Client) ListUsersByDepartment(deptID string, pageSize int, pageToken st
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
@@ -68,8 +64,8 @@ func (c *Client) GetDepartment(deptID string) (*Department, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Department, nil
@@ -83,12 +79,7 @@ type SearchDepartmentsRequest struct {
 // SearchUsers searches for users by name keyword
 // Note: This requires user_access_token (contact:user:search scope)
 func (c *Client) SearchUsers(query string, pageSize int, pageToken string) ([]SearchUserResult, bool, string, error) {
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 200 {
-		pageSize = 200
-	}
+	pageSize = ClampPageSize(pageSize, 20, 200)
 
 	path := fmt.Sprintf("/search/v1/user?query=%s&page_size=%d",
 		url.QueryEscape(query), pageSize)
@@ -103,8 +94,8 @@ func (c *Client) SearchUsers(query string, pageSize int, pageToken string) ([]Se
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Users, resp.Data.HasMore, resp.Data.PageToken, nil
@@ -114,12 +105,7 @@ func (c *Client) SearchUsers(query string, pageSize int, pageToken string) ([]Se
 // Note: This requires user_access_token, not tenant_access_token
 // For now, we'll use tenant token and handle the limitation
 func (c *Client) SearchDepartments(query string, pageSize int, pageToken string) ([]Department, bool, string, error) {
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 50 {
-		pageSize = 50
-	}
+	pageSize = ClampPageSize(pageSize, 20, 50)
 
 	path := fmt.Sprintf("/contact/v3/departments/search?page_size=%d", pageSize)
 	if pageToken != "" {
@@ -135,8 +121,8 @@ func (c *Client) SearchDepartments(query string, pageSize int, pageToken string)
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil

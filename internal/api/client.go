@@ -105,6 +105,11 @@ func (c *Client) Delete(path string, result interface{}) error {
 	return c.doRequest("DELETE", path, nil, result)
 }
 
+// DeleteWithBody performs a DELETE request with a body
+func (c *Client) DeleteWithBody(path string, body interface{}, result interface{}) error {
+	return c.doRequest("DELETE", path, body, result)
+}
+
 // doRequestWithTenantToken performs an HTTP request using tenant access token
 func (c *Client) doRequestWithTenantToken(method, path string, body interface{}, result interface{}) error {
 	// Ensure we have a valid tenant token
@@ -168,6 +173,16 @@ func (c *Client) GetWithTenantToken(path string, result interface{}) error {
 // DeleteWithTenantToken performs a DELETE request using tenant access token
 func (c *Client) DeleteWithTenantToken(path string, result interface{}) error {
 	return c.doRequestWithTenantToken("DELETE", path, nil, result)
+}
+
+// PutWithTenantToken performs a PUT request using tenant access token
+func (c *Client) PutWithTenantToken(path string, body interface{}, result interface{}) error {
+	return c.doRequestWithTenantToken("PUT", path, body, result)
+}
+
+// PatchWithTenantToken performs a PATCH request using tenant access token
+func (c *Client) PatchWithTenantToken(path string, body interface{}, result interface{}) error {
+	return c.doRequestWithTenantToken("PATCH", path, body, result)
 }
 
 // DownloadWithTenantToken performs a GET request that returns binary data

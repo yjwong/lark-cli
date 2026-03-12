@@ -1,6 +1,5 @@
 package api
 
-import "fmt"
 
 // UserInfo represents the current user's information
 type UserInfo struct {
@@ -27,8 +26,8 @@ func (c *Client) GetCurrentUser() (*UserInfo, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return &resp.Data, nil
@@ -54,8 +53,8 @@ func (c *Client) LookupUsers(opts UserLookupOptions) ([]UserContactInfo, error) 
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.UserList, nil

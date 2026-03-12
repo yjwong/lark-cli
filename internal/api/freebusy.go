@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -28,8 +27,8 @@ func (c *Client) GetFreebusy(opts FreebusyOptions) ([]FreebusyPeriod, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.FreebusyList, nil

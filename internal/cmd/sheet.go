@@ -5,11 +5,36 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strconv"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yjwong/lark-cli/internal/api"
 	"github.com/yjwong/lark-cli/internal/output"
 )
+
+// resolveSheetID returns the given sheetID if non-empty, otherwise fetches the
+// first sheet (by index) from the spreadsheet.
+func resolveSheetID(client *api.Client, token, sheetID string) string {
+	if sheetID != "" {
+		return sheetID
+	}
+	sheets, err := client.GetSpreadsheetSheets(token)
+	if err != nil {
+		output.Fatal("API_ERROR", err)
+	}
+	if len(sheets) == 0 {
+		output.Fatal("NO_SHEETS", fmt.Errorf("spreadsheet has no sheets"))
+	}
+	first := sheets[0]
+	for _, s := range sheets[1:] {
+		if s.Index < first.Index {
+			first = s
+		}
+	}
+	return first.SheetID
+}
 
 var sheetCmd = &cobra.Command{
 	Use:   "sheet",
@@ -95,27 +120,23 @@ Examples:
 		token := args[0]
 		sheetID, _ := cmd.Flags().GetString("sheet")
 		rangeSpec, _ := cmd.Flags().GetString("range")
+		render, _ := cmd.Flags().GetString("render")
+
+		// Map friendly flag values to Lark API values
+		renderOptionMap := map[string]string{
+			"":          "UnformattedValue",
+			"value":     "UnformattedValue",
+			"formula":   "Formula",
+			"formatted": "FormattedValue",
+		}
+		renderOption, ok := renderOptionMap[render]
+		if !ok {
+			output.Fatal("INVALID_ARG", fmt.Errorf("invalid --render value %q: must be value, formula, or formatted", render))
+		}
 
 		client := api.NewClient()
 
-		// If no sheet ID specified, get the first sheet
-		if sheetID == "" {
-			sheets, err := client.GetSpreadsheetSheets(token)
-			if err != nil {
-				output.Fatal("API_ERROR", err)
-			}
-			if len(sheets) == 0 {
-				output.Fatal("NO_SHEETS", fmt.Errorf("spreadsheet has no sheets"))
-			}
-			// Find the sheet with the lowest index (first sheet)
-			firstSheet := sheets[0]
-			for _, s := range sheets[1:] {
-				if s.Index < firstSheet.Index {
-					firstSheet = s
-				}
-			}
-			sheetID = firstSheet.SheetID
-		}
+		sheetID = resolveSheetID(client, token, sheetID)
 
 		// Build the range string
 		var fullRange string
@@ -145,7 +166,7 @@ Examples:
 		}
 
 		// Get the data
-		data, err := client.GetSheetData(token, fullRange)
+		data, err := client.GetSheetData(token, fullRange, renderOption)
 		if err != nil {
 			output.Fatal("API_ERROR", err)
 		}
@@ -257,22 +278,7 @@ Examples:
 		client := api.NewClient()
 
 		// If no sheet ID specified, get the first sheet
-		if sheetID == "" {
-			sheets, err := client.GetSpreadsheetSheets(token)
-			if err != nil {
-				output.Fatal("API_ERROR", err)
-			}
-			if len(sheets) == 0 {
-				output.Fatal("NO_SHEETS", fmt.Errorf("spreadsheet has no sheets"))
-			}
-			firstSheet := sheets[0]
-			for _, s := range sheets[1:] {
-				if s.Index < firstSheet.Index {
-					firstSheet = s
-				}
-			}
-			sheetID = firstSheet.SheetID
-		}
+		sheetID = resolveSheetID(client, token, sheetID)
 
 		// Parse values from --values flag or stdin
 		if valuesJSON == "" {
@@ -296,9 +302,39 @@ Examples:
 			output.Fatal("PARSE_ERROR", fmt.Errorf("invalid values JSON (must be array of arrays): %w", err))
 		}
 
+		// Convert booleans to 1/0 (Lark API doesn't accept bool cell type)
+		for i, row := range values {
+			for j, cell := range row {
+				if b, ok := cell.(bool); ok {
+					if b {
+						values[i][j] = 1
+					} else {
+						values[i][j] = 0
+					}
+				}
+			}
+		}
+
+		autoType, _ := cmd.Flags().GetBool("auto-type")
+		if autoType {
+			values = autoTypeValues(values)
+		}
+
 		// Build the range string
 		if rangeSpec == "" {
-			rangeSpec = "A1"
+			// Auto-calculate range from values dimensions
+			rows := len(values)
+			cols := 0
+			for _, row := range values {
+				if len(row) > cols {
+					cols = len(row)
+				}
+			}
+			if cols == 0 {
+				cols = 1
+			}
+			endCol := columnIndexToLetter(cols)
+			rangeSpec = fmt.Sprintf("A1:%s%d", endCol, rows)
 		}
 		fullRange := sheetID + "!" + rangeSpec
 
@@ -317,6 +353,177 @@ Examples:
 			result.UpdatedColumns = data.UpdatedColumns
 			result.UpdatedCells = data.UpdatedCells
 			result.Revision = data.Revision
+		}
+
+		output.JSON(result)
+	},
+}
+
+// autoTypeValues converts string values to appropriate types:
+// - "YYYY-MM-DD" date strings become Excel serial date numbers
+// - Integer strings become int
+// - Float strings become float64
+func autoTypeValues(values [][]any) [][]any {
+	dateRegex := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	for i, row := range values {
+		for j, cell := range row {
+			s, ok := cell.(string)
+			if !ok {
+				continue
+			}
+			if dateRegex.MatchString(s) {
+				t, err := time.Parse("2006-01-02", s)
+				if err == nil {
+					// Excel serial date: days since 1899-12-30
+					epoch := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
+					values[i][j] = int(t.Sub(epoch).Hours() / 24)
+					continue
+				}
+			}
+			if n, err := strconv.Atoi(s); err == nil {
+				values[i][j] = n
+				continue
+			}
+			if f, err := strconv.ParseFloat(s, 64); err == nil {
+				values[i][j] = f
+				continue
+			}
+		}
+	}
+	return values
+}
+
+// --- sheet style ---
+
+var sheetStyleCmd = &cobra.Command{
+	Use:   "style <spreadsheet_token>",
+	Short: "Apply style (e.g. bold) to a cell range",
+	Long: `Apply formatting to a range of cells in a Lark spreadsheet.
+
+Currently supports bold formatting and number/date format. Specify the range with --range and the sheet with --sheet.
+
+Examples:
+  lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --range A1:Q1 --bold
+  lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range H2:I122 --format "yyyy-MM-dd"
+  lark sheet style T4mHsrFyzhXrj0tVzRslUGx8gkA --range J2:K122 --format "#,##0"`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		sheetID, _ := cmd.Flags().GetString("sheet")
+		rangeSpec, _ := cmd.Flags().GetString("range")
+		bold, _ := cmd.Flags().GetBool("bold")
+		format, _ := cmd.Flags().GetString("format")
+
+		if rangeSpec == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--range is required"))
+		}
+		if !bold && format == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("at least one style flag is required (e.g. --bold, --format)"))
+		}
+
+		client := api.NewClient()
+
+		sheetID = resolveSheetID(client, token, sheetID)
+
+		style := api.SheetStyle{}
+		if bold {
+			style.Font = &api.SheetStyleFont{Bold: true}
+		}
+		if format != "" {
+			style.Formatter = format
+		}
+
+		if err := client.SetSheetStyle(token, sheetID, rangeSpec, style); err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		output.JSON(api.OutputSheetStyle{Success: true})
+	},
+}
+
+// --- sheet resize ---
+
+var sheetResizeCmd = &cobra.Command{
+	Use:   "resize <spreadsheet_token>",
+	Short: "Resize column widths in a sheet",
+	Long: `Set pixel widths for columns in a Lark spreadsheet.
+
+Provide widths as a JSON object mapping 0-based column index to pixel width,
+or use --all to set a uniform width for all columns.
+
+Examples:
+  lark sheet resize T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --widths '{"0":60,"1":280,"2":200}'
+  lark sheet resize T4mHsrFyzhXrj0tVzRslUGx8gkA --all 200 --cols 17`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		sheetID, _ := cmd.Flags().GetString("sheet")
+		widthsJSON, _ := cmd.Flags().GetString("widths")
+		allWidth, _ := cmd.Flags().GetInt("all")
+		numCols, _ := cmd.Flags().GetInt("cols")
+
+		client := api.NewClient()
+
+		sheetID = resolveSheetID(client, token, sheetID)
+
+		widths := map[int]int{}
+		if widthsJSON != "" {
+			var raw map[string]int
+			if err := json.Unmarshal([]byte(widthsJSON), &raw); err != nil {
+				output.Fatal("PARSE_ERROR", fmt.Errorf("invalid widths JSON: %w", err))
+			}
+			for k, v := range raw {
+				
+				idx, err := strconv.Atoi(k)
+				if err != nil {
+					output.Fatal("PARSE_ERROR", fmt.Errorf("invalid column index %q in --widths: must be a number", k))
+				}
+				widths[idx] = v
+			}
+		} else if cmd.Flags().Changed("all") {
+			if numCols <= 0 {
+				output.Fatal("MISSING_ARG", fmt.Errorf("--cols is required when using --all"))
+			}
+			for i := 0; i < numCols; i++ {
+				widths[i] = allWidth
+			}
+		} else {
+			output.Fatal("MISSING_ARG", fmt.Errorf("either --widths or --all with --cols is required"))
+		}
+
+		if err := client.SetSheetColumnWidths(token, sheetID, widths); err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		output.JSON(api.OutputSheetResize{Success: true, ColumnsSet: len(widths)})
+	},
+}
+
+// --- sheet add-tab ---
+
+var sheetAddTabCmd = &cobra.Command{
+	Use:   "add-tab <spreadsheet_token>",
+	Short: "Add a new sheet tab to a spreadsheet",
+	Long: `Add a new sheet tab to an existing Lark spreadsheet.
+
+Examples:
+  lark sheet add-tab T4mHsrFyzhXrj0tVzRslUGx8gkA --title "README"
+  lark sheet add-tab T4mHsrFyzhXrj0tVzRslUGx8gkA --title "README" --index 0`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		title, _ := cmd.Flags().GetString("title")
+		index, _ := cmd.Flags().GetInt("index")
+
+		if title == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--title is required"))
+		}
+
+		client := api.NewClient()
+
+		result, err := client.AddSheetTab(token, title, index)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
 		}
 
 		output.JSON(result)
@@ -393,20 +600,41 @@ func init() {
 	sheetCmd.AddCommand(sheetReadCmd)
 	sheetCmd.AddCommand(sheetWriteCmd)
 	sheetCmd.AddCommand(sheetCreateCmd)
+	sheetCmd.AddCommand(sheetStyleCmd)
+	sheetCmd.AddCommand(sheetResizeCmd)
+	sheetCmd.AddCommand(sheetAddTabCmd)
 	sheetCmd.AddCommand(sheetDownloadCmd)
 
 	// Flags for sheet read
 	sheetReadCmd.Flags().String("sheet", "", "Sheet ID to read from (default: first sheet)")
 	sheetReadCmd.Flags().String("range", "", "Cell range to read (e.g., A1:Z100)")
+	sheetReadCmd.Flags().String("render", "value", "How to render cell values: value (computed, default), formula (raw =formula), formatted (display string)")
 
 	// Flags for sheet write
 	sheetWriteCmd.Flags().String("sheet", "", "Sheet ID to write to (default: first sheet)")
 	sheetWriteCmd.Flags().String("range", "", "Target range in A1 notation (e.g., A1:C3, default: A1)")
 	sheetWriteCmd.Flags().String("values", "", "JSON array of arrays (e.g., '[[\"a\",\"b\"],[\"c\",\"d\"]]')")
+	sheetWriteCmd.Flags().Bool("auto-type", false, "Auto-detect and convert date strings (YYYY-MM-DD) to serial numbers and numeric strings to numbers")
 
 	// Flags for sheet create
 	sheetCreateCmd.Flags().String("title", "", "Spreadsheet title (required)")
 	sheetCreateCmd.Flags().String("folder", "", "Folder token to create the spreadsheet in (default: root)")
+
+	// Flags for sheet style
+	sheetStyleCmd.Flags().String("sheet", "", "Sheet ID (default: first sheet)")
+	sheetStyleCmd.Flags().String("range", "", "Cell range in A1 notation (e.g., A1:Q1) - required")
+	sheetStyleCmd.Flags().Bool("bold", false, "Apply bold formatting")
+	sheetStyleCmd.Flags().String("format", "", `Number/date format string (e.g., "yyyy-MM-dd", "#,##0", "0.00%")`)
+
+	// Flags for sheet resize
+	sheetResizeCmd.Flags().String("sheet", "", "Sheet ID (default: first sheet)")
+	sheetResizeCmd.Flags().String("widths", "", `JSON object mapping 0-based column index to pixel width, e.g. '{"0":60,"1":280}'`)
+	sheetResizeCmd.Flags().Int("all", 0, "Set all columns to this pixel width (use with --cols)")
+	sheetResizeCmd.Flags().Int("cols", 0, "Number of columns to resize when using --all")
+
+	// Flags for sheet add-tab
+	sheetAddTabCmd.Flags().String("title", "", "Tab title (required)")
+	sheetAddTabCmd.Flags().Int("index", 0, "Tab position (0 = leftmost, default: 0)")
 
 	// Flags for sheet download
 	sheetDownloadCmd.Flags().StringP("output", "o", "", "Output file path (required)")

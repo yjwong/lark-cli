@@ -898,6 +898,9 @@ Fetch new emails from the server into the local cache.
 # Sync with more parallel connections (faster for large mailboxes)
 ./lark mail sync --workers 20
 
+# Sync and cache full message bodies for later analysis
+./lark mail sync --include-bodies
+
 # Sync specific mailbox
 ./lark mail sync --mailbox Sent
 ```
@@ -905,6 +908,7 @@ Fetch new emails from the server into the local cache.
 Flags:
 - `--mailbox`, `-m`: Mailbox to sync (default: INBOX)
 - `--workers`, `-w`: Number of parallel connections (default: 10)
+- `--include-bodies`: Also fetch and cache full RFC822 message bodies. This is useful for full-text analysis, but slower than header-only sync.
 
 The sync is resumable - if interrupted, running sync again will only fetch messages not already cached. Progress is displayed during sync.
 
@@ -914,6 +918,7 @@ Output:
   "mailbox": "INBOX",
   "new_messages": 5,
   "total_cached": 1523,
+  "bodies_cached": 1523,
   "message": "synced 5 new messages"
 }
 ```
@@ -931,6 +936,9 @@ Search the local cache (no network calls, very fast).
 
 # Filter by subject
 ./lark mail search --subject "Q4 Report"
+
+# Filter by body text (requires prior sync with --include-bodies)
+./lark mail search --body "sender authentication"
 
 # Filter by date range
 ./lark mail search --since 2026-01-01 --before 2026-01-15
@@ -964,6 +972,7 @@ Output:
 ```
 
 **Note:** The `freshness` field indicates how stale the cache is. If data is stale, run `lark mail sync` first.
+Body searches require a prior `./lark mail sync --include-bodies` for the mailbox you are querying.
 
 #### Show Email Content
 

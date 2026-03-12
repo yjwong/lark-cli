@@ -48,7 +48,12 @@ lark contact list-dept
 
 # List users in specific department
 lark contact list-dept od_xxxx
+
+# Specify page size (max 50, default 50)
+lark contact list-dept od_xxxx --page-size 25
 ```
+
+Available flags: `--page-size` (number of results per page, max 50)
 
 Output:
 ```json

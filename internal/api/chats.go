@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/url"
 	"strconv"
 )
@@ -44,8 +43,8 @@ func (c *Client) SearchChats(opts *SearchChatsOptions) ([]Chat, bool, string, er
 		return nil, false, "", err
 	}
 
-	if resp.Code != 0 {
-		return nil, false, "", fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, false, "", err
 	}
 
 	return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil

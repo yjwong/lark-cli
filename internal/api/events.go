@@ -103,8 +103,8 @@ func (c *Client) getInstanceView(calendarID string, startTime, endTime time.Time
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Items, nil
@@ -112,38 +112,21 @@ func (c *Client) getInstanceView(calendarID string, startTime, endTime time.Time
 
 // ListEventAttendees retrieves all attendees for an event
 func (c *Client) ListEventAttendees(calendarID, eventID string) ([]Attendee, error) {
-	var allAttendees []Attendee
-	var pageToken string
-
-	for {
-		params := url.Values{}
-		if pageToken != "" {
-			params.Set("page_token", pageToken)
-		}
-
+	return PaginateWith(func(pageToken string) ([]Attendee, bool, string, error) {
 		path := fmt.Sprintf("/calendar/v4/calendars/%s/events/%s/attendees", calendarID, eventID)
-		if len(params) > 0 {
-			path += "?" + params.Encode()
+		if pageToken != "" {
+			path += "?page_token=" + url.QueryEscape(pageToken)
 		}
 
 		var resp AttendeeListResponse
 		if err := c.Get(path, &resp); err != nil {
-			return nil, err
+			return nil, false, "", err
 		}
-
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, false, "", err
 		}
-
-		allAttendees = append(allAttendees, resp.Data.Items...)
-
-		if !resp.Data.HasMore {
-			break
-		}
-		pageToken = resp.Data.PageToken
-	}
-
-	return allAttendees, nil
+		return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
+	})
 }
 
 // CreateEventAttendees adds attendees to an existing event
@@ -160,8 +143,8 @@ func (c *Client) CreateEventAttendees(calendarID, eventID string, attendees []At
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Attendees, nil
@@ -176,8 +159,8 @@ func (c *Client) GetEvent(calendarID, eventID string) (*Event, error) {
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Event, nil
@@ -208,8 +191,8 @@ func (c *Client) CreateEvent(calendarID string, req *CreateEventRequest) (*Event
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Event, nil
@@ -238,8 +221,8 @@ func (c *Client) UpdateEvent(calendarID, eventID string, req *UpdateEventRequest
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Event, nil
@@ -254,8 +237,8 @@ func (c *Client) DeleteEvent(calendarID, eventID string) error {
 		return err
 	}
 
-	if resp.Code != 0 {
-		return fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return err
 	}
 
 	return nil
@@ -284,8 +267,8 @@ func (c *Client) SearchEvents(calendarID, query string, startTime, endTime time.
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Items, nil
@@ -397,8 +380,8 @@ func (c *Client) ReplyToEvent(calendarID, eventID, rsvpStatus string) error {
 		return err
 	}
 
-	if resp.Code != 0 {
-		return fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return err
 	}
 
 	return nil
@@ -418,8 +401,8 @@ func (c *Client) DeleteEventAttendees(calendarID, eventID string, attendeeIDs []
 		return err
 	}
 
-	if resp.Code != 0 {
-		return fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return err
 	}
 
 	return nil
@@ -451,10 +434,7 @@ func ExtractUserRsvpStatus(event Event, userOpenID, calendarID string, client *C
 
 // ListChatMemberAttendees retrieves the individual member RSVP status for a chat group invitee
 func (c *Client) ListChatMemberAttendees(calendarID, eventID, attendeeID string) ([]ChatMemberAttendee, error) {
-	var allMembers []ChatMemberAttendee
-	var pageToken string
-
-	for {
+	return PaginateWith(func(pageToken string) ([]ChatMemberAttendee, bool, string, error) {
 		params := url.Values{}
 		params.Set("user_id_type", "open_id")
 		if pageToken != "" {
@@ -466,20 +446,11 @@ func (c *Client) ListChatMemberAttendees(calendarID, eventID, attendeeID string)
 
 		var resp ChatMemberAttendeesResponse
 		if err := c.Get(path, &resp); err != nil {
-			return nil, err
+			return nil, false, "", err
 		}
-
-		if resp.Code != 0 {
-			return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+		if err := resp.Err(); err != nil {
+			return nil, false, "", err
 		}
-
-		allMembers = append(allMembers, resp.Data.Items...)
-
-		if !resp.Data.HasMore {
-			break
-		}
-		pageToken = resp.Data.PageToken
-	}
-
-	return allMembers, nil
+		return resp.Data.Items, resp.Data.HasMore, resp.Data.PageToken, nil
+	})
 }

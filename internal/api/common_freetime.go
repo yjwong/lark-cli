@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -40,8 +39,8 @@ func (c *Client) GetCommonFreeTime(opts CommonFreeTimeOptions) ([]FreeTimeSlot, 
 		return nil, err
 	}
 
-	if resp.Code != 0 {
-		return nil, fmt.Errorf("API error (code %d): %s", resp.Code, resp.Msg)
+	if err := resp.Err(); err != nil {
+		return nil, err
 	}
 
 	return resp.Data.Items, nil
