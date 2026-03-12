@@ -1101,11 +1101,36 @@ Examples:
 	Run: func(cmd *cobra.Command, args []string) {
 		token := args[0]
 		docType, _ := cmd.Flags().GetString("type")
+
+		client := api.NewClient()
+
+		if !cmd.Flags().Changed("type") {
+			// Auto-detect: try common types in order
+			for _, t := range []string{"docx", "sheet", "bitable", "folder", "file", "doc", "mindnote", "slides", "wiki"} {
+				meta, err := client.GetDriveMeta(token, t)
+				if err == nil {
+					result := api.OutputDriveInfo{
+						Token:            meta.DocToken,
+						Type:             meta.DocType,
+						Title:            meta.Title,
+						OwnerID:          meta.OwnerID,
+						CreateTime:       formatUnixTimestamp(parseUnixStr(meta.CreateTime)),
+						LatestModifyUser: meta.LatestModifyUser,
+						LatestModifyTime: formatUnixTimestamp(parseUnixStr(meta.LatestModifyTime)),
+						URL:              meta.URL,
+					}
+					output.JSON(result)
+					return
+				}
+			}
+			output.Fatal("API_ERROR", fmt.Errorf("no metadata found for token %s (tried all types)", token))
+			return
+		}
+
 		if docType == "" {
 			docType = "file"
 		}
 
-		client := api.NewClient()
 		meta, err := client.GetDriveMeta(token, docType)
 		if err != nil {
 			output.Fatal("API_ERROR", err)
