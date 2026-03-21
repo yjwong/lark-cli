@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yjwong/lark-cli/internal/api"
+	"github.com/yjwong/lark-cli/internal/docrender"
 	"github.com/yjwong/lark-cli/internal/output"
 )
 
@@ -37,6 +38,7 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		documentID := args[0]
+		rawMode, _ := cmd.Flags().GetBool("raw")
 
 		client := api.NewClient()
 
@@ -46,10 +48,20 @@ Examples:
 			output.Fatal("API_ERROR", err)
 		}
 
-		// Get document content as markdown
-		content, err := client.GetDocumentContent(documentID)
-		if err != nil {
-			output.Fatal("API_ERROR", err)
+		var content string
+		if rawMode {
+			// Legacy: use server-rendered markdown
+			content, err = client.GetDocumentContent(documentID)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+		} else {
+			// Default: render from block structure
+			blocks, err := client.GetDocumentBlocks(documentID)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+			content = docrender.RenderBlocks(blocks)
 		}
 
 		var title string
@@ -835,7 +847,7 @@ Examples:
 
 // codeLanguageHelp returns a string listing code language IDs for the help text
 func codeLanguageHelp() string {
-	return "Common language IDs: 1=PlainText, 7=Bash, 8=C#, 9=C++, 10=C, 12=CSS, 22=Go, 24=HTML, 28=JSON, 29=Java, 30=JavaScript, 32=Kotlin, 49=Python, 52=Ruby, 53=Rust, 56=SQL, 61=Swift, 63=TypeScript, 67=YAML"
+	return "Common language IDs: 1=PlainText, 7=Bash, 8=C#, 9=C++, 10=C, 12=CSS, 22=Go, 24=HTML, 28=JSON, 29=Java, 30=JavaScript, 32=Kotlin, 49=Python, 52=Ruby, 53=Rust, 56=SQL, 58=Swift, 63=TypeScript, 67=YAML"
 }
 
 func init() {
@@ -852,6 +864,9 @@ func init() {
 	docCmd.AddCommand(docDownloadCmd)
 	docCmd.AddCommand(docCreateCmd)
 	docCmd.AddCommand(docAppendCmd)
+
+	// Flags for doc get
+	docGetCmd.Flags().Bool("raw", false, "Use legacy server-rendered markdown (instead of block-based renderer)")
 
 	// Flags for doc wiki-search
 	docWikiSearchCmd.Flags().String("space-id", "", "Filter to specific wiki space ID")

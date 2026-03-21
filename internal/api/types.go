@@ -576,15 +576,21 @@ type Document struct {
 	Title      string `json:"title"`
 }
 
+// TextLink represents a hyperlink on a text element
+type TextLink struct {
+	URL string `json:"url"`
+}
+
 // TextElementStyle represents text styling
 type TextElementStyle struct {
-	Bold            bool `json:"bold,omitempty"`
-	Italic          bool `json:"italic,omitempty"`
-	Strikethrough   bool `json:"strikethrough,omitempty"`
-	Underline       bool `json:"underline,omitempty"`
-	InlineCode      bool `json:"inline_code,omitempty"`
-	BackgroundColor int  `json:"background_color,omitempty"`
-	TextColor       int  `json:"text_color,omitempty"`
+	Bold            bool      `json:"bold,omitempty"`
+	Italic          bool      `json:"italic,omitempty"`
+	Strikethrough   bool      `json:"strikethrough,omitempty"`
+	Underline       bool      `json:"underline,omitempty"`
+	InlineCode      bool      `json:"inline_code,omitempty"`
+	BackgroundColor int       `json:"background_color,omitempty"`
+	TextColor       int       `json:"text_color,omitempty"`
+	Link            *TextLink `json:"link,omitempty"`
 }
 
 // TextRun represents a text run element
@@ -641,6 +647,46 @@ type ImageBlock struct {
 // DividerBlock represents a divider (horizontal rule) in a document
 type DividerBlock struct{}
 
+// AddOnsBlock represents an add-ons block (e.g., Mermaid diagrams) in a document
+type AddOnsBlock struct {
+	ComponentID     string `json:"component_id,omitempty"`
+	ComponentTypeID string `json:"component_type_id,omitempty"`
+	Record          string `json:"record,omitempty"`
+}
+
+// TableBlock represents a table block (block_type 31)
+type TableBlock struct {
+	Cells    []string       `json:"cells,omitempty"`
+	Property *TableProperty `json:"property,omitempty"`
+}
+
+// TableProperty defines table dimensions and layout
+type TableProperty struct {
+	RowSize      int              `json:"row_size,omitempty"`
+	ColumnSize   int              `json:"column_size,omitempty"`
+	ColumnWidth  []int            `json:"column_width,omitempty"`
+	HeaderRow    bool             `json:"header_row,omitempty"`
+	HeaderColumn bool            `json:"header_column,omitempty"`
+	MergeInfo    []TableMergeInfo `json:"merge_info,omitempty"`
+}
+
+// TableMergeInfo represents cell merge information
+type TableMergeInfo struct {
+	RowSpan int `json:"row_span,omitempty"`
+	ColSpan int `json:"col_span,omitempty"`
+}
+
+// TableCellBlock represents a table cell (block_type 32)
+type TableCellBlock struct{}
+
+// CalloutBlock represents a callout block
+type CalloutBlock struct {
+	BackgroundColor int    `json:"background_color,omitempty"`
+	BorderColor     int    `json:"border_color,omitempty"`
+	TextColor       int    `json:"text_color,omitempty"`
+	EmojiID         string `json:"emoji_id,omitempty"`
+}
+
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
 	BlockID   string      `json:"block_id,omitempty"`
@@ -663,8 +709,12 @@ type DocumentBlock struct {
 	Code      *TextBlock  `json:"code,omitempty"`
 	Quote     *TextBlock  `json:"quote,omitempty"`
 	TodoBlock *TextBlock  `json:"todo,omitempty"`
-	Divider   *DividerBlock `json:"divider,omitempty"`
-	Image     *ImageBlock `json:"image,omitempty"`
+	Divider   *DividerBlock   `json:"divider,omitempty"`
+	Image     *ImageBlock     `json:"image,omitempty"`
+	Table     *TableBlock     `json:"table,omitempty"`
+	TableCell *TableCellBlock `json:"table_cell,omitempty"`
+	Callout   *CalloutBlock   `json:"callout,omitempty"`
+	AddOns    *AddOnsBlock    `json:"add_ons,omitempty"`
 }
 
 // --- Document API Response Types ---
