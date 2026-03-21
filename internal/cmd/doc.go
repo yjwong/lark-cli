@@ -375,19 +375,22 @@ func convertCommentsToOutput(fileToken string, comments []api.DocumentComment) a
 }
 
 // resolveUserNames batch-resolves user IDs to display names via the contacts API.
+// Uses the batch endpoint (single API call) with user token.
 // Failures are silently ignored — the renderer falls back to user IDs.
 func resolveUserNames(client *api.Client, userIDs []string) map[string]string {
-	names := make(map[string]string, len(userIDs))
-	for _, id := range userIDs {
-		user, err := client.GetUser(id, "open_id")
-		if err != nil || user == nil {
-			continue
-		}
+	users, err := client.BatchGetUsers(userIDs, "open_id")
+	if err != nil {
+		return nil
+	}
+
+	names := make(map[string]string, len(users))
+	for _, user := range users {
+		id := user.OpenID
 		name := user.Name
 		if name == "" {
 			name = user.EnName
 		}
-		if name != "" {
+		if id != "" && name != "" {
 			names[id] = name
 		}
 	}

@@ -478,6 +478,14 @@ type GetUserResponse struct {
 	} `json:"data,omitempty"`
 }
 
+// BatchGetUserResponse is the response from GET /contact/v3/users/batch
+type BatchGetUserResponse struct {
+	BaseResponse
+	Data struct {
+		Items []ContactUser `json:"items,omitempty"`
+	} `json:"data,omitempty"`
+}
+
 // FindByDepartmentResponse is the response from GET /contact/v3/users/find_by_department
 type FindByDepartmentResponse struct {
 	BaseResponse
