@@ -641,6 +641,13 @@ type ImageBlock struct {
 // DividerBlock represents a divider (horizontal rule) in a document
 type DividerBlock struct{}
 
+// AddOnsBlock represents an add-ons block (e.g., Mermaid diagrams) in a document
+type AddOnsBlock struct {
+	ComponentID     string `json:"component_id,omitempty"`
+	ComponentTypeID string `json:"component_type_id,omitempty"`
+	Record          string `json:"record,omitempty"` // Content data as JSON string
+}
+
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
 	BlockID   string      `json:"block_id,omitempty"`
@@ -664,7 +671,8 @@ type DocumentBlock struct {
 	Quote     *TextBlock  `json:"quote,omitempty"`
 	TodoBlock *TextBlock  `json:"todo,omitempty"`
 	Divider   *DividerBlock `json:"divider,omitempty"`
-	Image     *ImageBlock `json:"image,omitempty"`
+	Image     *ImageBlock  `json:"image,omitempty"`
+	AddOns    *AddOnsBlock `json:"add_ons,omitempty"` // type 40
 }
 
 // --- Document API Response Types ---
