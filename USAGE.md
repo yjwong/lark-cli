@@ -752,6 +752,7 @@ Block types:
 - 22: Divider
 - 27: Image
 - 31: Table
+- 40: Add-Ons (e.g., Mermaid diagrams — content in `add_ons.record`)
 
 #### Get Document Comments
 

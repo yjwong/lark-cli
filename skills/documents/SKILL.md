@@ -440,6 +440,7 @@ When using `doc blocks`, key block types:
 | 22 | Divider |
 | 27 | Image |
 | 31 | Table |
+| 40 | Add-Ons (e.g., Mermaid diagrams) |
 
 ## Output Format
 
