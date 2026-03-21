@@ -61,7 +61,14 @@ Examples:
 			if err != nil {
 				output.Fatal("API_ERROR", err)
 			}
-			content = docrender.RenderBlocks(blocks)
+
+			// Resolve mention user IDs to display names
+			opts := docrender.RenderOptions{}
+			if userIDs := docrender.ExtractUserIDs(blocks); len(userIDs) > 0 {
+				opts.UserNames = resolveUserNames(client, userIDs)
+			}
+
+			content = docrender.RenderBlocksWithOptions(blocks, opts)
 		}
 
 		var title string
@@ -365,6 +372,26 @@ func convertCommentsToOutput(fileToken string, comments []api.DocumentComment) a
 		Comments:  outputComments,
 		Count:     len(outputComments),
 	}
+}
+
+// resolveUserNames batch-resolves user IDs to display names via the contacts API.
+// Failures are silently ignored — the renderer falls back to user IDs.
+func resolveUserNames(client *api.Client, userIDs []string) map[string]string {
+	names := make(map[string]string, len(userIDs))
+	for _, id := range userIDs {
+		user, err := client.GetUser(id, "open_id")
+		if err != nil || user == nil {
+			continue
+		}
+		name := user.Name
+		if name == "" {
+			name = user.EnName
+		}
+		if name != "" {
+			names[id] = name
+		}
+	}
+	return names
 }
 
 // formatUnixTimestamp converts a unix timestamp to RFC3339 format

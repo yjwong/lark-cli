@@ -9,14 +9,31 @@ import (
 	"github.com/yjwong/lark-cli/internal/api"
 )
 
+// RenderOptions configures the block renderer
+type RenderOptions struct {
+	// UserNames maps user IDs (e.g., "ou_xxx") to display names.
+	// If nil or a user ID is missing, falls back to @user_id.
+	UserNames map[string]string
+}
+
 // blockNode wraps a DocumentBlock with resolved children for tree traversal
 type blockNode struct {
 	block    api.DocumentBlock
 	children []*blockNode
 }
 
+// renderer holds state for a single render pass
+type renderer struct {
+	opts RenderOptions
+}
+
 // RenderBlocks converts a flat list of document blocks into markdown
 func RenderBlocks(blocks []api.DocumentBlock) string {
+	return RenderBlocksWithOptions(blocks, RenderOptions{})
+}
+
+// RenderBlocksWithOptions converts blocks to markdown with custom options
+func RenderBlocksWithOptions(blocks []api.DocumentBlock, opts RenderOptions) string {
 	if len(blocks) == 0 {
 		return ""
 	}
@@ -26,9 +43,43 @@ func RenderBlocks(blocks []api.DocumentBlock) string {
 		return ""
 	}
 
+	r := &renderer{opts: opts}
 	var sb strings.Builder
-	renderChildren(&sb, tree, 0)
+	r.renderChildren(&sb, tree, 0)
 	return strings.TrimRight(sb.String(), "\n") + "\n"
+}
+
+// ExtractUserIDs collects all unique mention_user IDs from a block list
+func ExtractUserIDs(blocks []api.DocumentBlock) []string {
+	seen := make(map[string]bool)
+	var ids []string
+	for _, b := range blocks {
+		for _, tb := range allTextBlocks(&b) {
+			for _, elem := range tb.Elements {
+				if elem.MentionUser != nil && !seen[elem.MentionUser.UserID] {
+					seen[elem.MentionUser.UserID] = true
+					ids = append(ids, elem.MentionUser.UserID)
+				}
+			}
+		}
+	}
+	return ids
+}
+
+// allTextBlocks returns all TextBlock pointers from a DocumentBlock
+func allTextBlocks(b *api.DocumentBlock) []*api.TextBlock {
+	candidates := []*api.TextBlock{
+		b.Page, b.Text, b.Heading1, b.Heading2, b.Heading3,
+		b.Heading4, b.Heading5, b.Heading6, b.Heading7, b.Heading8, b.Heading9,
+		b.Bullet, b.Ordered, b.Code, b.Quote, b.TodoBlock,
+	}
+	var result []*api.TextBlock
+	for _, tb := range candidates {
+		if tb != nil {
+			result = append(result, tb)
+		}
+	}
+	return result
 }
 
 // buildBlockTree indexes blocks by ID and builds a tree rooted at the Page block (type 1)
@@ -62,7 +113,7 @@ func buildBlockTree(blocks []api.DocumentBlock) *blockNode {
 }
 
 // renderChildren renders all children of a node
-func renderChildren(sb *strings.Builder, node *blockNode, depth int) {
+func (r *renderer) renderChildren(sb *strings.Builder, node *blockNode, depth int) {
 	orderedCounter := 0
 	for _, child := range node.children {
 		if child.block.BlockType == 13 { // ordered list
@@ -70,7 +121,7 @@ func renderChildren(sb *strings.Builder, node *blockNode, depth int) {
 		} else {
 			orderedCounter = 0
 		}
-		renderBlock(sb, child, depth, orderedCounter)
+		r.renderBlock(sb, child, depth, orderedCounter)
 	}
 }
 
@@ -83,13 +134,13 @@ func indentPrefix(depth int) string {
 }
 
 // renderBlock renders a single block to markdown
-func renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int) {
+func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int) {
 	switch node.block.BlockType {
 	case 1: // Page
-		renderChildren(sb, node, depth)
+		r.renderChildren(sb, node, depth)
 
 	case 2: // Text
-		text := renderTextBlock(node.block.Text)
+		text := r.renderTextBlock(node.block.Text)
 		if text != "" {
 			sb.WriteString(text)
 		}
@@ -98,30 +149,30 @@ func renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int
 	case 3, 4, 5, 6, 7, 8, 9, 10, 11: // Headings H1-H9
 		level := node.block.BlockType - 2
 		tb := getHeadingTextBlock(&node.block, level)
-		text := renderTextBlock(tb)
+		text := r.renderTextBlock(tb)
 		sb.WriteString(strings.Repeat("#", level))
 		sb.WriteString(" ")
 		sb.WriteString(text)
 		sb.WriteString("\n\n")
 
 	case 12: // Bullet
-		text := renderTextBlock(node.block.Bullet)
+		text := r.renderTextBlock(node.block.Bullet)
 		sb.WriteString(indentPrefix(depth))
 		sb.WriteString("- ")
 		sb.WriteString(text)
 		sb.WriteString("\n")
 		if len(node.children) > 0 {
-			renderChildren(sb, node, depth+1)
+			r.renderChildren(sb, node, depth+1)
 		}
 
 	case 13: // Ordered
-		text := renderTextBlock(node.block.Ordered)
+		text := r.renderTextBlock(node.block.Ordered)
 		sb.WriteString(indentPrefix(depth))
 		sb.WriteString(fmt.Sprintf("%d. ", orderedNum))
 		sb.WriteString(text)
 		sb.WriteString("\n")
 		if len(node.children) > 0 {
-			renderChildren(sb, node, depth+1)
+			r.renderChildren(sb, node, depth+1)
 		}
 
 	case 14: // Code
@@ -130,7 +181,7 @@ func renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int
 			if node.block.Code.Style != nil {
 				lang = codeLanguageName(node.block.Code.Style.Language)
 			}
-			content := renderTextBlock(node.block.Code)
+			content := r.renderTextBlock(node.block.Code)
 			sb.WriteString("```")
 			sb.WriteString(lang)
 			sb.WriteString("\n")
@@ -139,7 +190,7 @@ func renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int
 		}
 
 	case 15: // Quote
-		text := renderTextBlock(node.block.Quote)
+		text := r.renderTextBlock(node.block.Quote)
 		for _, line := range strings.Split(text, "\n") {
 			sb.WriteString("> ")
 			sb.WriteString(line)
@@ -153,7 +204,7 @@ func renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int
 			if node.block.TodoBlock.Style != nil {
 				done = node.block.TodoBlock.Style.Done
 			}
-			text := renderTextBlock(node.block.TodoBlock)
+			text := r.renderTextBlock(node.block.TodoBlock)
 			if done {
 				sb.WriteString("- [x] ")
 			} else {
@@ -166,7 +217,7 @@ func renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int
 	case 19: // Callout
 		if len(node.children) > 0 {
 			var calloutSB strings.Builder
-			renderChildren(&calloutSB, node, depth)
+			r.renderChildren(&calloutSB, node, depth)
 			for _, line := range strings.Split(strings.TrimRight(calloutSB.String(), "\n"), "\n") {
 				sb.WriteString("> ")
 				sb.WriteString(line)
@@ -184,13 +235,13 @@ func renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int
 		}
 
 	case 31: // Table
-		renderTable(sb, node)
+		r.renderTable(sb, node)
 
 	case 32: // TableCell — handled by renderTable
 		// Skip: rendered as part of parent table
 
 	case 40: // AddOns
-		renderAddOns(sb, &node.block)
+		r.renderAddOns(sb, &node.block)
 
 	default:
 		// Warn about unsupported block types to stderr
@@ -200,7 +251,7 @@ func renderBlock(sb *strings.Builder, node *blockNode, depth int, orderedNum int
 }
 
 // renderTable renders a table block as a markdown table
-func renderTable(sb *strings.Builder, node *blockNode) {
+func (r *renderer) renderTable(sb *strings.Builder, node *blockNode) {
 	if node.block.Table == nil || node.block.Table.Property == nil {
 		return
 	}
@@ -219,13 +270,13 @@ func renderTable(sb *strings.Builder, node *blockNode) {
 	// Check if table has a header row
 	hasHeader := prop.HeaderRow
 
-	for r := 0; r < rows; r++ {
+	for row := 0; row < rows; row++ {
 		sb.WriteString("|")
 		for c := 0; c < cols; c++ {
-			idx := r*cols + c
+			idx := row*cols + c
 			cellContent := ""
 			if idx < len(cells) {
-				cellContent = renderTableCell(cells[idx])
+				cellContent = r.renderTableCell(cells[idx])
 			}
 			// Escape pipes in cell content
 			cellContent = strings.ReplaceAll(cellContent, "|", "\\|")
@@ -236,7 +287,7 @@ func renderTable(sb *strings.Builder, node *blockNode) {
 		sb.WriteString("\n")
 
 		// Add separator after first row (header or not — required by markdown)
-		if r == 0 {
+		if row == 0 {
 			sb.WriteString("|")
 			for c := 0; c < cols; c++ {
 				sb.WriteString(" --- |")
@@ -252,7 +303,7 @@ func renderTable(sb *strings.Builder, node *blockNode) {
 }
 
 // renderTableCell renders the content of a table cell (its child blocks) as inline text
-func renderTableCell(cell *blockNode) string {
+func (r *renderer) renderTableCell(cell *blockNode) string {
 	if len(cell.children) == 0 {
 		return ""
 	}
@@ -262,15 +313,15 @@ func renderTableCell(cell *blockNode) string {
 		text := ""
 		switch child.block.BlockType {
 		case 2: // Text
-			text = renderTextBlock(child.block.Text)
+			text = r.renderTextBlock(child.block.Text)
 		case 12: // Bullet in cell
-			text = "- " + renderTextBlock(child.block.Bullet)
+			text = "- " + r.renderTextBlock(child.block.Bullet)
 		case 13: // Ordered in cell
-			text = renderTextBlock(child.block.Ordered)
+			text = r.renderTextBlock(child.block.Ordered)
 		default:
 			tb := getAnyTextBlock(&child.block)
 			if tb != nil {
-				text = renderTextBlock(tb)
+				text = r.renderTextBlock(tb)
 			}
 		}
 		text = strings.TrimSpace(text)
@@ -283,7 +334,7 @@ func renderTableCell(cell *blockNode) string {
 }
 
 // renderAddOns renders an AddOns block, detecting the type from component_type_id
-func renderAddOns(sb *strings.Builder, block *api.DocumentBlock) {
+func (r *renderer) renderAddOns(sb *strings.Builder, block *api.DocumentBlock) {
 	if block.AddOns == nil || block.AddOns.Record == "" {
 		return
 	}
@@ -321,22 +372,26 @@ func isMermaidAddOn(componentTypeID string) bool {
 }
 
 // renderTextBlock renders a TextBlock's elements to markdown
-func renderTextBlock(tb *api.TextBlock) string {
+func (r *renderer) renderTextBlock(tb *api.TextBlock) string {
 	if tb == nil {
 		return ""
 	}
-	return renderTextElements(tb.Elements)
+	return r.renderTextElements(tb.Elements)
 }
 
 // renderTextElements converts text elements to markdown
-func renderTextElements(elements []api.TextElement) string {
+func (r *renderer) renderTextElements(elements []api.TextElement) string {
 	var sb strings.Builder
 	for _, elem := range elements {
 		if elem.TextRun != nil {
 			sb.WriteString(renderTextRun(elem.TextRun))
 		} else if elem.MentionUser != nil {
 			sb.WriteString("@")
-			sb.WriteString(elem.MentionUser.UserID)
+			if name, ok := r.opts.UserNames[elem.MentionUser.UserID]; ok && name != "" {
+				sb.WriteString(name)
+			} else {
+				sb.WriteString(elem.MentionUser.UserID)
+			}
 		} else if elem.MentionDoc != nil {
 			title := elem.MentionDoc.Title
 			if title == "" {
