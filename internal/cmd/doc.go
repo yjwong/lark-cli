@@ -396,6 +396,12 @@ func resolveUserNames(client *api.Client, userIDs []string) map[string]string {
 			names[id] = name
 		}
 	}
+
+	if len(names) == 0 && len(userIDs) > 0 {
+		fmt.Fprintln(os.Stderr, "warning: @mentions shown as user IDs (could not resolve display names)")
+		fmt.Fprintln(os.Stderr, "  hint: ensure 'Get basic information in contacts' scope is approved for your app")
+	}
+
 	return names
 }
 
