@@ -1,0 +1,182 @@
+---
+title: "Update View"
+url: "https://open.larksuite.com/document/uAjLw4CM/ukTMukTMukTM/reference/bitable-v1/app-table-view/patch"
+method: "PATCH"
+api_path: "https://open.larksuite.com/open-apis/bitable/v1/apps/:app_token/tables/:table_id/views/:view_id"
+service: "bitable-v1"
+resource: "app-table-view"
+section: "Docs"
+rate_limit: "10 per second"
+scopes:
+  - "bitable:app"
+updated: "1753668072000"
+---
+
+# Update view
+
+This interface is used to incrementally modify view information.
+
+## Request
+| Facts |  |
+| --- | --- |
+| HTTP URL | https://open.larksuite.com/open-apis/bitable/v1/apps/:app_token/tables/:table_id/views/:view_id |
+| HTTP Method | PATCH |
+| Rate Limit | 10 per second |
+| Supported app types | custom,isv |
+| Required scopes | `bitable:app` | ### Request header
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| Authorization | string | Yes | `tenant_access_token` or `user_access_token` **Value format**: "Bearer `access_token`" **Example value**: "Bearer u-7f1bcd13fc57d46bac21793a18e560" How to choose and get access token |
+| Content-Type | string | Yes | **Fixed value**: "application/json; charset=utf-8" | ### Path parameters
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `app_token` | `string` | Base app token **Example value**: "Bascng7vrxcxpig7geggXiCtadY" **Data validation rules**: - Minimum length: `1` characters |
+| `table_id` | `string` | Table ID **Example value**: "tblsRc9GRRXKqhvW" |
+| `view_id` | `string` | View ID **Example value**: "vewTpR1urY" | ### Request body
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `view_name` | `string` | No | View name **Example value**: "Grid" |
+| `property` | `app.table.view.property` | No | View properties |
+|   `filter_info` | `app.table.view.property.filter_info` | No | Filter conditions |
+|     `conjunction` | `string` | Yes | Relationship of Multiple Filter Criteria **Example value**: "and" **Optional values are**:  - `and`: And - `or`: Or  **Default value**: `and` |
+|     `conditions` | `app.table.view.property.filter_info.condition[]` | Yes | Filter Criteria **Data validation rules**: - Maximum length: `50` |
+|       `field_id` | `string` | Yes | Field unique ID for filtering **Example value**: "fldVioU**1" |
+|       `operator` | `string` | Yes | Type of filter operation **Example value**: "is" **Optional values are**:  - `is`: Equal to - `isNot`: Does not equal - `contains`: Include - `doesNotContain`: Not included - `isEmpty`: Is empty - `isNotEmpty`: Not empty - `isGreater`: Greater than - `isGreaterEqual`: Greater than or equal to - `isLess`: Less than - `isLessEqual`: Less than or equal to  **Default value**: `is` |
+|       `value` | `string` | No | Filter value **Example value**: "["optbdVH***", "optrpd3***"]" |
+|   `hidden_fields` | `string[]` | No | List of hidden field IDs **Example value**: ["fldVioU**2"] **Data validation rules**: - Maximum length: `300` |
+|   `hierarchy_config` | `app.table.view.property.hierarchy_config` | No | Table view hierarchy settings |
+|     `field_id` | `string` | No | Hierarchy's associated column id **Example value**: "fldTca**hb" | ### Request body example
+
+{
+    "view_name": "grid",
+    "property": {
+        "filter_info": {
+            "conditions": [
+                {
+                    "field_id": "fldpTw2262",
+                    "operator": "isGreater",
+                    "value": "[\"ExactDate\",\"1642672432000\"]"
+                }
+            ],
+            "conjunction": "and"
+        },
+        "hidden_fields": null
+    }
+}
+
+## Response
+
+### Response body
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `code` | `int` | Error codes, fail if not zero |
+| `msg` | `string` | Error descriptions |
+| `data` | `\-` | \- |
+|   `view` | `app.table.view` | View information |
+|     `view_id` | `string` | View Id |
+|     `view_name` | `string` | View name |
+|     `view_type` | `string` | View type |
+|     `property` | `app.table.view.property` | View properties |
+|       `filter_info` | `app.table.view.property.filter_info` | Filter conditions |
+|         `conjunction` | `string` | Relationship of Multiple Filter Criteria **Optional values are**:  - `and`: And - `or`: Or  |
+|         `conditions` | `app.table.view.property.filter_info.condition[]` | Filter Criteria |
+|           `field_id` | `string` | Field unique ID for filtering |
+|           `operator` | `string` | Type of filter operation **Optional values are**:  - `is`: Equal to - `isNot`: Does not equal - `contains`: Include - `doesNotContain`: Not included - `isEmpty`: Is empty - `isNotEmpty`: Not empty - `isGreater`: Greater than - `isGreaterEqual`: Greater than or equal to - `isLess`: Less than - `isLessEqual`: Less than or equal to  |
+|           `value` | `string` | Filter value |
+|           `condition_id` | `string` | Unique ID of filter condition |
+|           `field_type` | `int` | Field type for filtering  1: Multiline 2: Number 3: Single option 4: Multiple options 5: Date 7: Checkbox 11: Person 13: PhoneNumber 15: Link 17: Attachment 18: One-way link19: LOOKUP 20: Formula 21: Two-way link 22: Location 23: GroupChat 1001: Date created 1002: Last modified date  1003: Created by 1004: Modified by 1005: AutoSerial |
+|         `condition_omitted` | `boolean` | Is the filter condition default? |
+|       `hidden_fields` | `string[]` | List of hidden field IDs |
+|       `hierarchy_config` | `app.table.view.property.hierarchy_config` | Table view hierarchy settings |
+|         `field_id` | `string` | Hierarchy's associated column id | ### Response body example
+
+{
+    "code": 0,
+    "msg": "success",
+    "data": {
+        "view": {
+            "view_id": "vewsOleexJ",
+            "view_name": "grid",
+            "view_type": "grid",
+            "property": {
+                "filter_info": {
+                    "condition_omitted": null,
+                    "conditions": [
+                        {
+                            "condition_id": "conuKMQNNg",
+                            "field_id": "fldVioU**1",
+                            "field_type": 1,
+                            "operator": "is",
+                            "value": "[\"text content\"]"
+                        }
+                    ],
+                    "conjunction": "and"
+                },
+                "hidden_fields": null
+            }
+        }
+    }
+}
+
+### Error code
+| HTTP status code | Error code | Description | Troubleshooting suggestions |
+| --- | --- | --- | --- |
+| 400 | 1254000 | WrongRequestJson | Request error |
+| 400 | 1254001 | WrongRequestBody | Request body error |
+| 400 | 1254002 | Fail | Internal error, have any questions can be consulting service |
+| 400 | 1254003 | WrongBaseToken | AppToken error |
+| 400 | 1254004 | WrongTableId | Table id wrong |
+| 400 | 1254005 | WrongViewId | View id wrong |
+| 400 | 1254006 | WrongRecordId | Record id wrong |
+| 400 | 1254007 | EmptyValue | Empty value |
+| 400 | 1254008 | EmptyView | Empty view |
+| 400 | 1254009 | WrongFieldId | Wrong fieldId |
+| 400 | 1254010 | ReqConvError | Request error |
+| 400 | 1254012 | UnsupportedFieldType | UnsupportedFieldType |
+| 400 | 1254016 | InvalidSort | invalid sort |
+| 400 | 1254018 | InvalidFilter | The filter parameter is incorrect. Please refer to Record filter development guide for information on how to fill in the filter parameter. |
+| 400 | 1254019 | InvalidViewType | Invalid view type |
+| 400 | 1254020 | ViewNameDuplicated | Duplicate view name |
+| 400 | 1254021 | EmptyViewName | View name is empty |
+| 400 | 1254022 | InvalidViewName | Invalid view name |
+| 400 | 1254030 | TooLargeResponse | TooLargeResponse |
+| 400 | 1254032 | The role name is invalid, please modify it. | Invalid role name |
+| 400 | 1254033 | The role name is duplicated, please modify it. | Role name duplicated |
+| 400 | 1254036 | Base is copying, please try again later. | Base copy replicating, try again later |
+| 404 | 1254040 | BaseTokenNotFound | AppToken not found |
+| 404 | 1254041 | TableIdNotFound | Table not found |
+| 404 | 1254042 | ViewIdNotFound | View not found |
+| 404 | 1254043 | RecordIdNotFound | RecordIdNotFound |
+| 404 | 1254044 | FieldIdNotFound | FieldIdNotFound |
+| 404 | 1254045 | FieldNameNotFound | Field name does not exist |
+| 404 | 1254047 | Role id is not found. | Role not found |
+| 400 | 1254048 | MemberNotFound | Member not found |
+| 404 | 1254049 | Form field is not found. | Form field id does not exist |
+| 400 | 1254060 | TextFieldConvFail | TextFieldConvFail |
+| 400 | 1254061 | NumberFieldConvFail | NumberFieldConvFail |
+| 400 | 1254062 | SingleSelectFieldConvFail | SingleSelectFieldConvFail |
+| 400 | 1254063 | MultiSelectFieldConvFail | MultiSelectFieldConvFail |
+| 400 | 1254064 | DatetimeFieldConvFail | DatetimeFieldConvFail |
+| 400 | 1254065 | CheckboxFieldConvFail | CheckboxFieldConvFail |
+| 400 | 1254066 | UserFieldConvFail | The value corresponding to the personnel field type is incorrect. The possible reasons are: - The ID type specified by the user_id_type parameter does not match the type of the provided ID. - An unrecognized type or structure was provided. Currently, only `id` is supported, and it must be passed as an array. - An `open_id` was passed across applications. If you are passing an ID across applications, it is recommended to use `user_id`. The `open_id` obtained from different applications cannot be used interchangeably. |
+| 400 | 1254067 | LinkFieldConvFail | LinkFieldConvFail |
+| 400 | 1254100 | TableExceedLimit | TableExceedLimit, limited to 300 |
+| 400 | 1254101 | ViewExceedLimit | ViewExceedLimit, limited to 200 |
+| 400 | 1254103 | RecordExceedLimit | RecordExceedLimit, limited to 20,000 |
+| 400 | 1254104 | RecordAddOnceExceedLimit | RecordAddOnceExceedLimit, limited to 500 |
+| 400 | 1254110 | Role exceeds limit | Role exceed limit, limited to 30 |
+| 400 | 1254130 | TooLargeCell | TooLargeCell |
+| 429 | 1254290 | TooManyRequest | Request too fast, try again later |
+| 400 | 1254291 | Write conflict | The same data table does not support concurrent calls to the write interface, please check whether there is a concurrent call to the write interface. The writing interface includes: adding, modifying, and deleting records; adding, modifying, and deleting fields; modifying forms; modifying views, etc. |
+| 400 | 1254301 | OperationTypeError | Base does not have advanced permissions enabled or does not support enabling advanced permissions |
+| 403 | 1254302 | Permission denied. | No access rights, usually caused by the table opening of advanced permissions, please add a group containing applications in the advanced permissions settings and give this group read and write permissions |
+| 403 | 1254306 | InternalError | Internal error, have any questions can be consulting service |
+| 500 | 1255001 | RpcError | Internal error, have any questions can be consulting service |
+| 500 | 1255002 | MarshalError | Serialization failed, have any questions can be consulting service |
+| 500 | 1255003 | UmMarshalError | Deserialization failed, have any questions can be consulting service |
+| 500 | 1255004 | ConvError | Internal error, have any questions can be consulting service |
+| 500 | 1255005 | Request timed out, please try again later | Try again |
+| 504 | 1255040 | Request timed out, please try again later. | There are usually two situations when this error occurs: 1. The last submitted modification has not been processed; 2. The data is too large and the server calculation times out; This error code can be appropriately retried. |
+| 400 | 1254607 | Data not ready, please try again later | There are usually two situations when this error occurs: 1. The last submitted modification has not been processed; 2. The data is too large and the server calculation times out; This error code can be appropriately retried. |
+| 403 | 1254608 | Same API requests are submitted repeatedly. | Same API requests are submitted repeatedly. |
