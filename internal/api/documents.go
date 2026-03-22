@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"time"
 )
 
 // GetDocument retrieves document metadata
@@ -229,10 +230,15 @@ func (c *Client) BatchGetMediaTempDownloadURLs(fileTokens []string, documentID s
 	}
 
 	// Resolve URLs one at a time using the same method as GetMediaTempDownloadURL.
-	// The batch_get_tmp_download_url endpoint accepts file_tokens as a repeated
-	// query parameter but has strict rate limits (5 QPS).
+	// The batch_get_tmp_download_url endpoint has a strict rate limit of 5 QPS,
+	// so we throttle requests with a 200ms minimum interval.
 	result := make(map[string]string, len(fileTokens))
-	for _, token := range fileTokens {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for i, token := range fileTokens {
+		if i > 0 {
+			<-ticker.C
+		}
 		dlURL, err := c.GetMediaTempDownloadURL(token, documentID)
 		if err != nil {
 			// Log warning but continue with other tokens

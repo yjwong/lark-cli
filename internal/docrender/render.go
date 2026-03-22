@@ -167,7 +167,12 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 		level := node.block.BlockType - 2
 		tb := getHeadingTextBlock(&node.block, level)
 		text := r.renderTextBlock(tb)
-		sb.WriteString(strings.Repeat("#", level))
+		// CommonMark only supports ATX headings up to level 6
+		mdLevel := level
+		if mdLevel > 6 {
+			mdLevel = 6
+		}
+		sb.WriteString(strings.Repeat("#", mdLevel))
 		sb.WriteString(" ")
 		sb.WriteString(text)
 		sb.WriteString("\n\n")
@@ -201,11 +206,14 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 			r.inCodeBlock = true
 			content := r.renderTextBlock(node.block.Code)
 			r.inCodeBlock = false
-			sb.WriteString("```")
+			fence := codeFence(content)
+			sb.WriteString(fence)
 			sb.WriteString(lang)
 			sb.WriteString("\n")
 			sb.WriteString(content)
-			sb.WriteString("\n```\n\n")
+			sb.WriteString("\n")
+			sb.WriteString(fence)
+			sb.WriteString("\n\n")
 		}
 
 	case 15: // Quote
@@ -722,6 +730,18 @@ func decodeURL(s string) string {
 		return s
 	}
 	return decoded
+}
+
+// codeFence returns a backtick fence string long enough to safely wrap content.
+// If content contains ```, the fence uses more backticks than the longest run found.
+func codeFence(content string) string {
+	fence := "```"
+	for {
+		if !strings.Contains(content, fence) {
+			return fence
+		}
+		fence += "`"
+	}
 }
 
 // Block-level syntax regexes that match markdown triggers at line start (up to 3 leading spaces)

@@ -153,6 +153,53 @@ func TestRenderBlocks_CodeBlock(t *testing.T) {
 	}
 }
 
+func TestRenderBlocks_CodeBlockWithTripleBackticks(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"c1"}},
+		{BlockID: "c1", ParentID: "page", BlockType: 14, Code: &api.TextBlock{
+			Style:    &api.TextStyle{Language: 39}, // markdown
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "```go\nfmt.Println()\n```"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	// Should use ```` (4 backticks) to wrap content containing ```
+	if !strings.Contains(result, "````") {
+		t.Errorf("expected 4+ backtick fence for content with triple backticks, got %q", result)
+	}
+	if !strings.Contains(result, "```go\nfmt.Println()\n```") {
+		t.Errorf("expected content preserved verbatim, got %q", result)
+	}
+}
+
+func TestRenderBlocks_HeadingLevelClamped(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"h7"}},
+		{BlockID: "h7", ParentID: "page", BlockType: 9, Heading7: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Deep heading"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	// H7 (block_type 9) should be clamped to ###### (6)
+	if !strings.Contains(result, "###### Deep heading") {
+		t.Errorf("expected H7 clamped to 6 #'s, got %q", result)
+	}
+	if strings.Contains(result, "####### ") {
+		t.Errorf("should not have 7+ #'s, got %q", result)
+	}
+}
+
+func TestCodeFence(t *testing.T) {
+	if f := codeFence("normal code"); f != "```" {
+		t.Errorf("expected ```, got %q", f)
+	}
+	if f := codeFence("has ``` backticks"); f != "````" {
+		t.Errorf("expected ````, got %q", f)
+	}
+	if f := codeFence("has ```` four"); f != "`````" {
+		t.Errorf("expected `````, got %q", f)
+	}
+}
+
 func TestRenderBlocks_Todo(t *testing.T) {
 	blocks := []api.DocumentBlock{
 		{BlockID: "page", BlockType: 1, Children: []string{"td1", "td2"}},

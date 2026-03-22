@@ -614,6 +614,13 @@ Examples:
 
 // --- doc images ---
 
+// imageResult represents a single image download result for JSON output
+type imageResult struct {
+	Token string `json:"token"`
+	File  string `json:"file"`
+	Error string `json:"error,omitempty"`
+}
+
 var docImagesCmd = &cobra.Command{
 	Use:   "images <document_id>",
 	Short: "Download all images from a document",
@@ -649,7 +656,7 @@ Examples:
 		if len(tokens) == 0 {
 			output.JSON(map[string]interface{}{
 				"document_id": documentID,
-				"images":      []string{},
+				"images":      []imageResult{},
 				"message":     "no images found in document",
 			})
 			return
@@ -667,12 +674,6 @@ Examples:
 		}
 
 		// Download images in parallel
-		type imageResult struct {
-			Token    string `json:"token"`
-			File     string `json:"file"`
-			Error    string `json:"error,omitempty"`
-		}
-
 		results := make([]imageResult, len(tokens))
 		var wg sync.WaitGroup
 
@@ -1020,7 +1021,7 @@ Examples:
 
 // codeLanguageHelp returns a string listing code language IDs for the help text
 func codeLanguageHelp() string {
-	return "Common language IDs: 1=PlainText, 7=Bash, 8=C#, 9=C++, 10=C, 12=CSS, 22=Go, 24=HTML, 28=JSON, 29=Java, 30=JavaScript, 32=Kotlin, 49=Python, 52=Ruby, 53=Rust, 56=SQL, 58=Swift, 63=TypeScript, 67=YAML"
+	return "Common language IDs: 1=PlainText, 7=Bash, 8=C#, 9=C++, 10=C, 12=CSS, 22=Go, 24=HTML, 28=JSON, 29=Java, 30=JavaScript, 32=Kotlin, 49=Python, 52=Ruby, 53=Rust, 56=SQL, 61=Swift, 63=TypeScript, 67=YAML"
 }
 
 func init() {
