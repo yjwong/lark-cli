@@ -1,0 +1,121 @@
+---
+title: "Get Replies List"
+url: "https://open.larksuite.com/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file-comment-reply/list"
+method: "GET"
+api_path: "https://open.larksuite.com/open-apis/drive/v1/files/:file_token/comments/:comment_id/replies"
+service: "drive-v1"
+resource: "file-comment-reply"
+section: "Docs"
+rate_limit: "100 per minute"
+scopes:
+  - "docs:document.comment:read"
+  - "drive:drive"
+  - "drive:drive:readonly"
+field_scopes:
+  - "contact:user.employee_id:readonly"
+updated: "1710301985000"
+---
+
+# Get Replies List
+
+This interface is used to obtain replies according to the comment ID and pagination parameters.
+
+## Request
+| Facts |  |
+| --- | --- |
+| HTTP URL | https://open.larksuite.com/open-apis/drive/v1/files/:file_token/comments/:comment_id/replies |
+| HTTP Method | GET |
+| Rate Limit | 100 per minute |
+| Supported app types | custom,isv |
+| Required scopes Enable any scope from the list | `docs:document.comment:read` `drive:drive` `drive:drive:readonly` |
+| Required field scopes | > The response body of the API contains the following sensitive fields, and they will be returned only after corresponding scopes are added. If you do not need the fields, it is not recommended that you request the scopes. `contact:user.employee_id:readonly` | ### Request header
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| Authorization | string | Yes | `tenant_access_token` or `user_access_token` **Value format**: "Bearer `access_token`" **Example value**: "Bearer u-7f1bcd13fc57d46bac21793a18e560" How to choose and get access token | ### Path parameters
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `file_token` | `string` | Document Token **Example value**: "doxbcdl03Vsxhm7Qmnj110Ygwwh" |
+| `comment_id` | `string` | Comment ID **Example value**: "1654857036541812356" | ### Query parameters
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `page_size` | `int` | No | **Example value**: 10 **Data validation rules**: - Maximum value: `1 ～ 100` |
+| `page_token` | `string` | No | Page identifier. It is not filled in the first request, indicating traversal from the beginning; when there will be more groups, the new page_token will be returned at the same time, and the next traversal can use the page_token to get more groups **Example value**: 1654857036541812356 |
+| `file_type` | `string` | Yes | Document type **Example value**: docx **Optional values are**:  - `doc`: Documentation - `sheet`: Form - `file`: File - `docx`: New version of documentation  |
+| `user_id_type` | `string` | No | User ID categories **Example value**: open_id **Optional values are**:  - `open_id`: Identifies a user to an app. The same user has different Open IDs in different apps. How to get Open ID - `union_id`: Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps.How to get Union ID - `user_id`: Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps. How to get User ID  **Default value**: `open_id` **When the value is `user_id`, the following field scopes are required**: `contact:user.employee_id:readonly` | ## Response
+
+### Response body
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `code` | `int` | Error codes, fail if not zero |
+| `msg` | `string` | Error descriptions |
+| `data` | `\-` | \- |
+|   `items` | `file.comment.reply[]` | Reply list |
+|     `reply_id` | `string` | Reply ID |
+|     `user_id` | `string` | User ID |
+|     `create_time` | `int` | Creation time |
+|     `update_time` | `int` | Last update |
+|     `content` | `reply_content` | Reply content |
+|       `elements` | `reply_element[]` | Reply content |
+|         `type` | `string` | Content elements of the reply **Optional values are**:  - `text_run`: Plain text - `docs_link`: Link to @mentioning a document in Docs - `person`: Contact to @mention  |
+|         `text_run` | `text_run` | Text content |
+|           `text` | `string` | Reply with plain text |
+|         `docs_link` | `docs_link` | Text content |
+|           `url` | `string` | @mentioned document in a reply. |
+|         `person` | `person` | Text content |
+|           `user_id` | `string` | @mentioned contact in a reply |
+|     `extra` | `reply_extra` | Store other type replies item |
+|       `image_list` | `string[]` | Image token list |
+|   `page_token` | `string` | Page identifier, when has_more is true, a new page_token will also be returned. Otherwise, page_token will not be returned |
+|   `has_more` | `boolean` | Whether the response body has more parameters | ### Response body example
+
+{
+    "code": 0,
+    "msg": "success",
+    "data": {
+        "items": [
+            {
+                "reply_id": "6916106822734512356",
+                "user_id": "ou_cc19b2bfb93f8a44db4b4d6eab2abcef",
+                "create_time": 1610281603,
+                "update_time": 1610281603,
+                "content": {
+                    "elements": [
+                        {
+                            "type": "text_run",
+                            "text_run": {
+                                "text": "comment text"
+                            },
+                            "docs_link": {
+                                "url": "https://example.larksuite.com/docs/doccnHh7U87HOFpii5u5Gabcef"
+                            },
+                            "person": {
+                                "user_id": "ou_cc19b2bfb93f8a44db4b4d6eababcef"
+                            }
+                        }
+                    ]
+                },
+                "extra": {
+                    "image_list": [
+                        "xxfsffsabcef"
+                    ]
+                }
+            }
+        ],
+        "page_token": "6916106822734512356",
+        "has_more": true
+    }
+}
+
+### Error code
+| HTTP status code | Error code | Description | Troubleshooting suggestions |
+| --- | --- | --- | --- |
+| 400 | 1069301 | fail | Please try again. If the problem persists, contact the oncall personnel of the related service party. |
+| 400 | 1069302 | param error | Check whether the parameter is valid. |
+| 403 | 1069303 | forbidden | Check whether you have the permission to comment on the document. |
+| 400 | 1069304 | docs had been deleted | Check whether the document to comment on has been deleted. |
+| 400 | 1069305 | docs not exist | Check whether you have access to the document to comment on. |
+| 400 | 1069306 | content review not pass | Check whether the comment contains invalid content. |
+| 404 | 1069307 | not exist | Check whether you have access to the document to comment on and whether the person that is @mentioned by the comment or the document in Docs to comment on exists. |
+| 400 | 1069308 | exceeded limit | The comment data has reached the limit. For more information, contact the Customer Service. |
+| 400 | 1069399 | internal error | Please try again. If the problem persists, contact the oncall personnel of the related service party. |
+| 400 | 1064230 | locked_for_data_migration | Data migrating, temporarily unable to upload. |
