@@ -3,8 +3,11 @@ package docrender
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/yjwong/lark-cli/internal/api"
 )
@@ -24,7 +27,8 @@ type blockNode struct {
 
 // renderer holds state for a single render pass
 type renderer struct {
-	opts RenderOptions
+	opts      RenderOptions
+	inCodeBlock bool
 }
 
 // RenderBlocks converts a flat list of document blocks into markdown
@@ -64,6 +68,19 @@ func ExtractUserIDs(blocks []api.DocumentBlock) []string {
 		}
 	}
 	return ids
+}
+
+// ExtractImageTokens collects all unique image tokens from a block list
+func ExtractImageTokens(blocks []api.DocumentBlock) []string {
+	seen := make(map[string]bool)
+	var tokens []string
+	for _, b := range blocks {
+		if b.BlockType == 27 && b.Image != nil && b.Image.Token != "" && !seen[b.Image.Token] {
+			seen[b.Image.Token] = true
+			tokens = append(tokens, b.Image.Token)
+		}
+	}
+	return tokens
 }
 
 // allTextBlocks returns all TextBlock pointers from a DocumentBlock
@@ -142,7 +159,7 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 	case 2: // Text
 		text := r.renderTextBlock(node.block.Text)
 		if text != "" {
-			sb.WriteString(text)
+			sb.WriteString(escapeBlockSyntax(text))
 		}
 		sb.WriteString("\n")
 
@@ -181,7 +198,9 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 			if node.block.Code.Style != nil {
 				lang = codeLanguageName(node.block.Code.Style.Language)
 			}
+			r.inCodeBlock = true
 			content := r.renderTextBlock(node.block.Code)
+			r.inCodeBlock = false
 			sb.WriteString("```")
 			sb.WriteString(lang)
 			sb.WriteString("\n")
@@ -226,13 +245,55 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 			sb.WriteString("\n")
 		}
 
+	case 18: // Bitable
+		sb.WriteString("[bitable]\n\n")
+
+	case 20: // ChatCard
+		sb.WriteString("[chat]\n\n")
+
+	case 21: // Diagram
+		sb.WriteString("[diagram]\n\n")
+
 	case 22: // Divider
 		sb.WriteString("---\n\n")
+
+	case 23: // File
+		if node.block.File != nil {
+			name := node.block.File.Name
+			if name == "" {
+				name = node.block.File.Token
+			}
+			sb.WriteString(fmt.Sprintf("[file: %s]\n\n", name))
+		} else {
+			sb.WriteString("[file]\n\n")
+		}
+
+	case 24: // Grid — render columns sequentially
+		r.renderChildren(sb, node, depth)
+
+	case 25: // GridColumn — render children
+		r.renderChildren(sb, node, depth)
+
+	case 26: // Iframe
+		if node.block.Iframe != nil && node.block.Iframe.Component != nil && node.block.Iframe.Component.URL != "" {
+			sb.WriteString(fmt.Sprintf("[embed: %s]\n\n", node.block.Iframe.Component.URL))
+		} else {
+			sb.WriteString("[embed]\n\n")
+		}
 
 	case 27: // Image
 		if node.block.Image != nil {
 			sb.WriteString(fmt.Sprintf("[image: %s]\n\n", node.block.Image.Token))
 		}
+
+	case 28: // ISV
+		sb.WriteString("[isv]\n\n")
+
+	case 29: // Mindnote
+		sb.WriteString("[mindnote]\n\n")
+
+	case 30: // Sheet
+		sb.WriteString("[sheet]\n\n")
 
 	case 31: // Table
 		r.renderTable(sb, node)
@@ -240,8 +301,55 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 	case 32: // TableCell — handled by renderTable
 		// Skip: rendered as part of parent table
 
+	case 33: // View — associated with File blocks, no user-facing content
+		// Skip silently
+
+	case 34: // QuoteContainer — render children with > prefix
+		if len(node.children) > 0 {
+			var qcSB strings.Builder
+			r.renderChildren(&qcSB, node, depth)
+			for _, line := range strings.Split(strings.TrimRight(qcSB.String(), "\n"), "\n") {
+				sb.WriteString("> ")
+				sb.WriteString(line)
+				sb.WriteString("\n")
+			}
+			sb.WriteString("\n")
+		}
+
+	case 35: // Task
+		if node.block.Task != nil && node.block.Task.TaskID != "" {
+			sb.WriteString(fmt.Sprintf("[task: %s]\n\n", node.block.Task.TaskID))
+		} else {
+			sb.WriteString("[task]\n\n")
+		}
+
+	case 36, 37, 38, 39: // OKR, OKR Objective, OKR Key Result, OKR Progress
+		sb.WriteString("[okr]\n\n")
+
 	case 40: // AddOns
 		r.renderAddOns(sb, &node.block)
+
+	case 41: // JiraIssue
+		if node.block.JiraIssue != nil {
+			key := node.block.JiraIssue.Key
+			if key == "" {
+				key = node.block.JiraIssue.ID
+			}
+			if key != "" {
+				sb.WriteString(fmt.Sprintf("[jira: %s]\n\n", key))
+			} else {
+				sb.WriteString("[jira]\n\n")
+			}
+		} else {
+			sb.WriteString("[jira]\n\n")
+		}
+
+	case 42: // WikiCatalog
+		if node.block.WikiCatalog != nil && node.block.WikiCatalog.WikiToken != "" {
+			sb.WriteString(fmt.Sprintf("[wiki: %s]\n\n", node.block.WikiCatalog.WikiToken))
+		} else {
+			sb.WriteString("[wiki]\n\n")
+		}
 
 	default:
 		// Warn about unsupported block types to stderr
@@ -264,8 +372,24 @@ func (r *renderer) renderTable(sb *strings.Builder, node *blockNode) {
 		return
 	}
 
-	// Children are table cells in row-major order
+	// Prefer Table.Cells for cell ordering (canonical per API docs), fall back to children
 	cells := node.children
+	if len(node.block.Table.Cells) > 0 {
+		// Build an index of children by block ID for lookup
+		childIndex := make(map[string]*blockNode, len(node.children))
+		for _, child := range node.children {
+			childIndex[child.block.BlockID] = child
+		}
+		ordered := make([]*blockNode, 0, len(node.block.Table.Cells))
+		for _, cellID := range node.block.Table.Cells {
+			if cell, ok := childIndex[cellID]; ok {
+				ordered = append(ordered, cell)
+			}
+		}
+		if len(ordered) > 0 {
+			cells = ordered
+		}
+	}
 
 	// Check if table has a header row
 	hasHeader := prop.HeaderRow
@@ -330,7 +454,10 @@ func (r *renderer) renderTableCell(cell *blockNode) string {
 		}
 	}
 
-	return strings.Join(parts, ", ")
+	result := strings.Join(parts, ", ")
+	// Markdown table cells must be single-line; replace any newlines with spaces
+	result = strings.ReplaceAll(result, "\n", " ")
+	return result
 }
 
 // renderAddOns renders an AddOns block, detecting the type from component_type_id
@@ -384,7 +511,7 @@ func (r *renderer) renderTextElements(elements []api.TextElement) string {
 	var sb strings.Builder
 	for _, elem := range elements {
 		if elem.TextRun != nil {
-			sb.WriteString(renderTextRun(elem.TextRun))
+			sb.WriteString(r.renderTextRun(elem.TextRun))
 		} else if elem.MentionUser != nil {
 			sb.WriteString("@")
 			if name, ok := r.opts.UserNames[elem.MentionUser.UserID]; ok && name != "" {
@@ -401,36 +528,85 @@ func (r *renderer) renderTextElements(elements []api.TextElement) string {
 				sb.WriteString("[")
 				sb.WriteString(title)
 				sb.WriteString("](")
-				sb.WriteString(elem.MentionDoc.URL)
+				sb.WriteString(decodeURL(elem.MentionDoc.URL))
 				sb.WriteString(")")
 			} else {
 				sb.WriteString(title)
 			}
+		} else if elem.Equation != nil {
+			sb.WriteString("$")
+			sb.WriteString(elem.Equation.Content)
+			sb.WriteString("$")
+		} else if elem.Reminder != nil {
+			t := time.UnixMilli(elem.Reminder.ExpireTime).UTC()
+			if elem.Reminder.IsWholeDay {
+				sb.WriteString(fmt.Sprintf("[reminder: %s]", t.Format("2006-01-02")))
+			} else {
+				sb.WriteString(fmt.Sprintf("[reminder: %s]", t.Format(time.RFC3339)))
+			}
+		} else if elem.InlineFile != nil {
+			sb.WriteString(fmt.Sprintf("[file: %s]", elem.InlineFile.FileToken))
+		} else if elem.InlineBlock != nil {
+			sb.WriteString(fmt.Sprintf("[block: %s]", elem.InlineBlock.BlockID))
 		}
 	}
-	return sb.String()
+	result := sb.String()
+
+	// Collapse adjacent identical style markers from consecutive runs with the same style.
+	// e.g., **text1****text2** → **text1text2**
+	result = strings.ReplaceAll(result, "****", "")
+	result = strings.ReplaceAll(result, "~~~~", "")
+
+	return result
 }
 
 // renderTextRun renders a single text run with markdown formatting
-func renderTextRun(tr *api.TextRun) string {
+func (r *renderer) renderTextRun(tr *api.TextRun) string {
 	content := tr.Content
 	if content == "" {
 		return ""
 	}
 
 	style := tr.TextElementStyle
-	if style == nil {
+
+	// Skip escaping inside code blocks (content is inside fenced code blocks)
+	if r.inCodeBlock {
+		if style == nil {
+			return content
+		}
 		return content
+	}
+
+	if style == nil {
+		return escapeMarkdown(content)
+	}
+
+	// Apply inline code (don't combine with other styles, no escaping needed)
+	if style.InlineCode {
+		return "`" + content + "`"
+	}
+
+	// Escape markdown-significant characters in plain text
+	content = escapeMarkdown(content)
+
+	// Extract leading/trailing whitespace so style markers stay adjacent to text.
+	// Markdown parsers require e.g. **text** not ** text ** to render bold.
+	leading := ""
+	trailing := ""
+	trimmed := strings.TrimRight(content, " \t\n")
+	if len(trimmed) < len(content) {
+		trailing = content[len(trimmed):]
+		content = trimmed
+	}
+	trimmed = strings.TrimLeft(content, " \t\n")
+	if len(trimmed) < len(content) {
+		leading = content[:len(content)-len(trimmed)]
+		content = trimmed
 	}
 
 	// Apply link
 	if style.Link != nil && style.Link.URL != "" {
-		content = "[" + content + "](" + style.Link.URL + ")"
-	}
-
-	// Apply inline code (don't combine with other styles)
-	if style.InlineCode {
-		return "`" + content + "`"
+		content = "[" + content + "](" + decodeURL(style.Link.URL) + ")"
 	}
 
 	// Apply styles from inside out
@@ -444,7 +620,7 @@ func renderTextRun(tr *api.TextRun) string {
 		content = "**" + content + "**"
 	}
 
-	return content
+	return leading + content + trailing
 }
 
 // getHeadingTextBlock returns the TextBlock for a heading at the given level
@@ -496,46 +672,99 @@ func getAnyTextBlock(block *api.DocumentBlock) *api.TextBlock {
 	return getHeadingTextBlock(block, block.BlockType-2)
 }
 
-// codeLanguageName maps Lark code language IDs to markdown language names
-func codeLanguageName(id int) string {
-	switch id {
-	case 1:
-		return "plaintext"
-	case 7:
-		return "bash"
-	case 9:
-		return "cpp"
-	case 10:
-		return "c"
-	case 12:
-		return "css"
-	case 22:
-		return "go"
-	case 24:
-		return "html"
-	case 28:
-		return "json"
-	case 29:
-		return "java"
-	case 30:
-		return "javascript"
-	case 32:
-		return "kotlin"
-	case 49:
-		return "python"
-	case 52:
-		return "ruby"
-	case 53:
-		return "rust"
-	case 56:
-		return "sql"
-	case 58:
-		return "swift"
-	case 63:
-		return "typescript"
-	case 67:
-		return "yaml"
-	default:
-		return ""
+// mdInlineReplacer escapes markdown-significant inline characters
+var mdInlineReplacer = strings.NewReplacer(
+	`\`, `\\`,
+	`*`, `\*`,
+	`_`, `\_`,
+	"`", "\\`",
+	`[`, `\[`,
+	`]`, `\]`,
+	`~`, `\~`,
+)
+
+// urlPattern matches URLs in plain text for preservation during escaping
+var urlPattern = regexp.MustCompile(`https?://[^\s<>\[\]` + "`" + `]+`)
+
+// escapeMarkdown escapes inline markdown-significant characters in plain text,
+// preserving URLs by wrapping them in angle brackets for reliable autolinking.
+func escapeMarkdown(s string) string {
+	matches := urlPattern.FindAllStringIndex(s, -1)
+	if len(matches) == 0 {
+		return mdInlineReplacer.Replace(s)
 	}
+
+	var sb strings.Builder
+	lastEnd := 0
+	for _, m := range matches {
+		// Escape text before the URL
+		if m[0] > lastEnd {
+			sb.WriteString(mdInlineReplacer.Replace(s[lastEnd:m[0]]))
+		}
+		// Write URL as-is wrapped in angle brackets (markdown autolink)
+		sb.WriteString("<")
+		sb.WriteString(s[m[0]:m[1]])
+		sb.WriteString(">")
+		lastEnd = m[1]
+	}
+	// Escape text after the last URL
+	if lastEnd < len(s) {
+		sb.WriteString(mdInlineReplacer.Replace(s[lastEnd:]))
+	}
+	return sb.String()
+}
+
+// decodeURL decodes a URL-encoded string from the Lark API.
+// The API returns URLs with percent-encoding (e.g., https%3A%2F%2F).
+func decodeURL(s string) string {
+	decoded, err := url.QueryUnescape(s)
+	if err != nil {
+		return s
+	}
+	return decoded
+}
+
+// Block-level syntax regexes that match markdown triggers at line start (up to 3 leading spaces)
+var (
+	blockHeadingRe = regexp.MustCompile(`(?m)^( {0,3})(#{1,6}[ \t])`)
+	blockQuoteRe   = regexp.MustCompile(`(?m)^( {0,3})(> )`)
+	blockListRe    = regexp.MustCompile(`(?m)^( {0,3})([+\-] )`)
+	blockOrderedRe = regexp.MustCompile(`(?m)^( {0,3}\d+)(\. )`)
+	blockHRuleRe   = regexp.MustCompile(`(?m)^( {0,3})(---)`)
+)
+
+// escapeBlockSyntax escapes line-start patterns that would be misinterpreted
+// as markdown block syntax. Processes line-by-line.
+func escapeBlockSyntax(s string) string {
+	s = blockHeadingRe.ReplaceAllString(s, `${1}\${2}`)
+	s = blockQuoteRe.ReplaceAllString(s, `${1}\${2}`)
+	s = blockListRe.ReplaceAllString(s, `${1}\${2}`)
+	s = blockOrderedRe.ReplaceAllString(s, `${1}\${2}`)
+	s = blockHRuleRe.ReplaceAllString(s, `${1}\${2}`)
+	return s
+}
+
+// codeLanguages maps Lark code language IDs to markdown fence language names.
+// Complete list from https://open.larksuite.com/document/server-docs/docs/docx-v1/data-structure/block
+var codeLanguages = map[int]string{
+	1: "plaintext", 2: "abap", 3: "ada", 4: "apache", 5: "apex",
+	6: "asm", 7: "bash", 8: "csharp", 9: "cpp", 10: "c",
+	11: "cobol", 12: "css", 13: "coffeescript", 14: "d", 15: "dart",
+	16: "delphi", 17: "django", 18: "dockerfile", 19: "erlang", 20: "fortran",
+	21: "foxpro", 22: "go", 23: "groovy", 24: "html", 25: "htmlbars",
+	26: "http", 27: "haskell", 28: "json", 29: "java", 30: "javascript",
+	31: "julia", 32: "kotlin", 33: "latex", 34: "lisp", 35: "logo",
+	36: "lua", 37: "matlab", 38: "makefile", 39: "markdown", 40: "nginx",
+	41: "objectivec", 42: "openedgeabl", 43: "php", 44: "perl", 45: "postscript",
+	46: "powershell", 47: "prolog", 48: "protobuf", 49: "python", 50: "r",
+	51: "rpg", 52: "ruby", 53: "rust", 54: "sas", 55: "scss",
+	56: "sql", 57: "scala", 58: "scheme", 59: "scratch", 60: "shell",
+	61: "swift", 62: "thrift", 63: "typescript", 64: "vbscript", 65: "vb",
+	66: "xml", 67: "yaml", 68: "cmake", 69: "diff", 70: "gherkin",
+	71: "graphql", 72: "glsl", 73: "properties", 74: "solidity", 75: "toml",
+}
+
+// codeLanguageName maps a Lark code language ID to a markdown language name
+func codeLanguageName(id int) string {
+	return codeLanguages[id]
 }

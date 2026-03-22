@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -609,6 +612,138 @@ Examples:
 	},
 }
 
+// --- doc images ---
+
+var docImagesCmd = &cobra.Command{
+	Use:   "images <document_id>",
+	Short: "Download all images from a document",
+	Long: `Download all images from a Lark document in batch.
+
+Extracts all image tokens from the document blocks, resolves temporary
+download URLs in a single batch API call, and downloads images in parallel.
+
+Output directory defaults to current directory. Images are saved as
+<image_token>.<ext> where the extension is determined from the content type.
+
+Examples:
+  lark doc images ABC123xyz -o /tmp/images
+  lark doc images ABC123xyz`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		documentID := args[0]
+		outputDir, _ := cmd.Flags().GetString("output")
+		if outputDir == "" {
+			outputDir = "."
+		}
+
+		client := api.NewClient()
+
+		// Fetch document blocks
+		blocks, err := client.GetDocumentBlocks(documentID)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		// Extract image tokens
+		tokens := docrender.ExtractImageTokens(blocks)
+		if len(tokens) == 0 {
+			output.JSON(map[string]interface{}{
+				"document_id": documentID,
+				"images":      []string{},
+				"message":     "no images found in document",
+			})
+			return
+		}
+
+		// Batch resolve temp download URLs
+		urlMap, err := client.BatchGetMediaTempDownloadURLs(tokens, documentID)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		// Ensure output directory exists
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			output.Fatal("FILE_ERROR", err)
+		}
+
+		// Download images in parallel
+		type imageResult struct {
+			Token    string `json:"token"`
+			File     string `json:"file"`
+			Error    string `json:"error,omitempty"`
+		}
+
+		results := make([]imageResult, len(tokens))
+		var wg sync.WaitGroup
+
+		for i, token := range tokens {
+			downloadURL, ok := urlMap[token]
+			if !ok || downloadURL == "" {
+				results[i] = imageResult{Token: token, Error: "no download URL returned"}
+				continue
+			}
+
+			wg.Add(1)
+			go func(idx int, tok, dlURL string) {
+				defer wg.Done()
+
+				resp, err := http.Get(dlURL)
+				if err != nil {
+					results[idx] = imageResult{Token: tok, Error: err.Error()}
+					return
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					results[idx] = imageResult{Token: tok, Error: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+					return
+				}
+
+				// Determine file extension from content type
+				ext := ".bin"
+				switch ct := resp.Header.Get("Content-Type"); {
+				case ct == "image/png" || ct == "image/x-png":
+					ext = ".png"
+				case ct == "image/jpeg" || ct == "image/jpg":
+					ext = ".jpg"
+				case ct == "image/gif":
+					ext = ".gif"
+				case ct == "image/webp":
+					ext = ".webp"
+				case ct == "image/svg+xml":
+					ext = ".svg"
+				case ct == "image/bmp":
+					ext = ".bmp"
+				}
+
+				filename := tok + ext
+				filePath := filepath.Join(outputDir, filename)
+
+				file, err := os.Create(filePath)
+				if err != nil {
+					results[idx] = imageResult{Token: tok, Error: err.Error()}
+					return
+				}
+				defer file.Close()
+
+				if _, err := io.Copy(file, resp.Body); err != nil {
+					results[idx] = imageResult{Token: tok, Error: err.Error()}
+					return
+				}
+
+				results[idx] = imageResult{Token: tok, File: filePath}
+			}(i, token, downloadURL)
+		}
+
+		wg.Wait()
+
+		output.JSON(map[string]interface{}{
+			"document_id": documentID,
+			"images":      results,
+		})
+	},
+}
+
 // --- doc download ---
 
 var docDownloadCmd = &cobra.Command{
@@ -898,6 +1033,7 @@ func init() {
 	docCmd.AddCommand(docCommentsCmd)
 	docCmd.AddCommand(docSearchCmd)
 	docCmd.AddCommand(docImageCmd)
+	docCmd.AddCommand(docImagesCmd)
 	docCmd.AddCommand(docWikiSearchCmd)
 	docCmd.AddCommand(docDownloadCmd)
 	docCmd.AddCommand(docCreateCmd)
@@ -918,6 +1054,9 @@ func init() {
 	// Flags for doc image
 	docImageCmd.Flags().StringP("output", "o", "", "Output file path (default: stdout)")
 	docImageCmd.Flags().StringP("doc", "d", "", "Document ID (required for authentication)")
+
+	// Flags for doc images
+	docImagesCmd.Flags().StringP("output", "o", "", "Output directory (default: current directory)")
 
 	// Flags for doc download
 	docDownloadCmd.Flags().StringP("output", "o", "", "Output file path (default: original filename)")

@@ -622,11 +622,44 @@ type MentionDoc struct {
 	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
 }
 
+// Equation represents an inline KaTeX equation element
+type Equation struct {
+	Content          string            `json:"content,omitempty"`
+	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
+}
+
+// InlineReminder represents an inline date reminder element in document text
+type InlineReminder struct {
+	CreateUserID     string            `json:"create_user_id,omitempty"`
+	IsNotify         bool              `json:"is_notify,omitempty"`
+	IsWholeDay       bool              `json:"is_whole_day,omitempty"`
+	ExpireTime       int64             `json:"expire_time,omitempty"`
+	NotifyTime       int64             `json:"notify_time,omitempty"`
+	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
+}
+
+// InlineFile represents an inline file attachment element (output only)
+type InlineFile struct {
+	FileToken        string            `json:"file_token,omitempty"`
+	SourceBlockID    string            `json:"source_block_id,omitempty"`
+	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
+}
+
+// InlineBlock represents a reference to another block embedded inline (output only)
+type InlineBlock struct {
+	BlockID          string            `json:"block_id,omitempty"`
+	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
+}
+
 // TextElement represents a text element within a block
 type TextElement struct {
 	TextRun     *TextRun     `json:"text_run,omitempty"`
 	MentionUser *MentionUser `json:"mention_user,omitempty"`
 	MentionDoc  *MentionDoc  `json:"mention_doc,omitempty"`
+	Equation    *Equation    `json:"equation,omitempty"`
+	Reminder    *InlineReminder `json:"reminder,omitempty"`
+	InlineFile  *InlineFile  `json:"file,omitempty"`
+	InlineBlock *InlineBlock `json:"inline_block,omitempty"`
 }
 
 // TextStyle represents text block styling
@@ -695,6 +728,52 @@ type CalloutBlock struct {
 	EmojiID         string `json:"emoji_id,omitempty"`
 }
 
+// FileBlock represents a file attachment block (block_type 23)
+type FileBlock struct {
+	Token string `json:"token,omitempty"`
+	Name  string `json:"name,omitempty"`
+}
+
+// GridBlock represents a multi-column grid layout block (block_type 24)
+type GridBlock struct {
+	ColumnSize int `json:"column_size,omitempty"`
+}
+
+// GridColumnBlock represents a column within a grid (block_type 25)
+type GridColumnBlock struct {
+	WidthRatio int `json:"width_ratio,omitempty"`
+}
+
+// IframeComponent represents the embedded content in an iframe block
+type IframeComponent struct {
+	IframeType int    `json:"iframe_type,omitempty"`
+	URL        string `json:"url,omitempty"`
+}
+
+// IframeBlock represents an embedded iframe block (block_type 26)
+type IframeBlock struct {
+	Component *IframeComponent `json:"component,omitempty"`
+}
+
+// QuoteContainerBlock represents a quote container block (block_type 34)
+type QuoteContainerBlock struct{}
+
+// TaskBlock represents a task block (block_type 35)
+type TaskBlock struct {
+	TaskID string `json:"task_id,omitempty"`
+}
+
+// JiraIssueBlock represents a Jira issue block (block_type 41)
+type JiraIssueBlock struct {
+	ID  string `json:"id,omitempty"`
+	Key string `json:"key,omitempty"`
+}
+
+// WikiCatalogBlock represents a wiki catalog block (block_type 42)
+type WikiCatalogBlock struct {
+	WikiToken string `json:"wiki_token,omitempty"`
+}
+
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
 	BlockID   string      `json:"block_id,omitempty"`
@@ -717,12 +796,20 @@ type DocumentBlock struct {
 	Code      *TextBlock  `json:"code,omitempty"`
 	Quote     *TextBlock  `json:"quote,omitempty"`
 	TodoBlock *TextBlock  `json:"todo,omitempty"`
-	Divider   *DividerBlock   `json:"divider,omitempty"`
-	Image     *ImageBlock     `json:"image,omitempty"`
-	Table     *TableBlock     `json:"table,omitempty"`
-	TableCell *TableCellBlock `json:"table_cell,omitempty"`
-	Callout   *CalloutBlock   `json:"callout,omitempty"`
-	AddOns    *AddOnsBlock    `json:"add_ons,omitempty"`
+	Divider        *DividerBlock        `json:"divider,omitempty"`
+	File           *FileBlock           `json:"file,omitempty"`
+	Grid           *GridBlock           `json:"grid,omitempty"`
+	GridColumn     *GridColumnBlock     `json:"grid_column,omitempty"`
+	Iframe         *IframeBlock         `json:"iframe,omitempty"`
+	Image          *ImageBlock          `json:"image,omitempty"`
+	Table          *TableBlock          `json:"table,omitempty"`
+	TableCell      *TableCellBlock      `json:"table_cell,omitempty"`
+	QuoteContainer *QuoteContainerBlock `json:"quote_container,omitempty"`
+	Task           *TaskBlock           `json:"task,omitempty"`
+	Callout        *CalloutBlock        `json:"callout,omitempty"`
+	AddOns         *AddOnsBlock         `json:"add_ons,omitempty"`
+	JiraIssue      *JiraIssueBlock      `json:"jira_issue,omitempty"`
+	WikiCatalog    *WikiCatalogBlock    `json:"wiki_catalog,omitempty"`
 }
 
 // --- Document API Response Types ---

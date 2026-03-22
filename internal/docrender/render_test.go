@@ -1,6 +1,8 @@
 package docrender
 
 import (
+	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -378,5 +380,494 @@ func TestRenderBlocks_Quote(t *testing.T) {
 	result := RenderBlocks(blocks)
 	if !strings.Contains(result, "> A wise quote") {
 		t.Errorf("expected blockquote, got %q", result)
+	}
+}
+
+// --- Inline Escaping Tests ---
+
+func TestRenderBlocks_InlineEscaping(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{TextRun: &api.TextRun{Content: "Use **kwargs and _name"}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, `\*\*kwargs`) {
+		t.Errorf("expected escaped **, got %q", result)
+	}
+	if !strings.Contains(result, `\_name`) {
+		t.Errorf("expected escaped _, got %q", result)
+	}
+}
+
+func TestRenderBlocks_InlineEscapingWithStyles(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{TextRun: &api.TextRun{
+					Content:          "has *stars*",
+					TextElementStyle: &api.TextElementStyle{Bold: true},
+				}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	// Content should be escaped then wrapped in bold markers
+	if !strings.Contains(result, `**has \*stars\***`) {
+		t.Errorf("expected escaped content wrapped in bold, got %q", result)
+	}
+}
+
+func TestRenderBlocks_BoldWithTrailingSpace(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{TextRun: &api.TextRun{
+					Content:          "important text ",
+					TextElementStyle: &api.TextElementStyle{Bold: true},
+				}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	// Space should be outside the bold markers, not inside
+	if !strings.Contains(result, "**important text** ") {
+		t.Errorf("expected trailing space outside bold markers, got %q", result)
+	}
+	if strings.Contains(result, "**important text **") {
+		t.Errorf("trailing space should not be inside bold markers, got %q", result)
+	}
+}
+
+func TestRenderBlocks_ItalicWithLeadingSpace(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{TextRun: &api.TextRun{
+					Content:          " emphasis",
+					TextElementStyle: &api.TextElementStyle{Italic: true},
+				}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, " *emphasis*") {
+		t.Errorf("expected leading space outside italic markers, got %q", result)
+	}
+}
+
+func TestRenderBlocks_NoEscapingInInlineCode(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{TextRun: &api.TextRun{
+					Content:          "**not bold**",
+					TextElementStyle: &api.TextElementStyle{InlineCode: true},
+				}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "`**not bold**`") {
+		t.Errorf("expected unescaped content in inline code, got %q", result)
+	}
+}
+
+func TestRenderBlocks_NoEscapingInCodeBlock(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"c1"}},
+		{BlockID: "c1", ParentID: "page", BlockType: 14, Code: &api.TextBlock{
+			Style:    &api.TextStyle{Language: 49},
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "x = [1, 2]"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	// Code block content should NOT have brackets escaped
+	if strings.Contains(result, `\[`) {
+		t.Errorf("expected no escaping in code block, got %q", result)
+	}
+}
+
+// --- Block-Level Escaping Tests ---
+
+func TestRenderBlocks_BlockLevelEscaping(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		escaped string
+	}{
+		{"heading trigger", "# Not a heading", `\# Not a heading`},
+		{"blockquote trigger", "> Not a quote", `\> Not a quote`},
+		{"unordered list dash", "- Not a list", `\- Not a list`},
+		{"unordered list plus", "+ Not a list", `\+ Not a list`},
+		{"ordered list", "1. Not ordered", `1\. Not ordered`},
+		{"horizontal rule", "---", `\---`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			blocks := []api.DocumentBlock{
+				{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+				{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+					Elements: []api.TextElement{{TextRun: &api.TextRun{Content: tc.content}}},
+				}},
+			}
+			result := RenderBlocks(blocks)
+			if !strings.Contains(result, tc.escaped) {
+				t.Errorf("expected %q, got %q", tc.escaped, result)
+			}
+		})
+	}
+}
+
+func TestRenderBlocks_BlockLevelEscapingWithIndentation(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "   # Indented heading"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, `   \# Indented heading`) {
+		t.Errorf("expected escaped indented heading trigger, got %q", result)
+	}
+}
+
+func TestRenderBlocks_NoBlockEscapingInHeadings(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"h1"}},
+		{BlockID: "h1", ParentID: "page", BlockType: 3, Heading1: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Real Heading"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "# Real Heading") {
+		t.Errorf("heading should not be escaped, got %q", result)
+	}
+}
+
+// --- New TextElement Tests ---
+
+func TestRenderBlocks_Equation(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{TextRun: &api.TextRun{Content: "The formula is "}},
+				{Equation: &api.Equation{Content: "E = mc^2"}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "$E = mc^2$") {
+		t.Errorf("expected equation rendering, got %q", result)
+	}
+}
+
+func TestRenderBlocks_Reminder(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{Reminder: &api.InlineReminder{
+					ExpireTime: 1710460800000, // 2024-03-15T00:00:00Z
+					IsWholeDay: true,
+				}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[reminder: 2024-03-15]") {
+		t.Errorf("expected whole-day reminder, got %q", result)
+	}
+}
+
+func TestRenderBlocks_ReminderWithTime(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{Reminder: &api.InlineReminder{
+					ExpireTime: 1710500400000, // 2024-03-15T11:00:00Z
+					IsWholeDay: false,
+				}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[reminder: 2024-03-15T11:00:00Z]") {
+		t.Errorf("expected datetime reminder in UTC, got %q", result)
+	}
+}
+
+func TestRenderBlocks_InlineFile(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{InlineFile: &api.InlineFile{FileToken: "boxcnABC123"}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[file: boxcnABC123]") {
+		t.Errorf("expected inline file placeholder, got %q", result)
+	}
+}
+
+// --- New Block Type Tests ---
+
+func TestRenderBlocks_Callout(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"co1"}},
+		{BlockID: "co1", ParentID: "page", BlockType: 19,
+			Children: []string{"co1t"},
+			Callout:  &api.CalloutBlock{EmojiID: "bulb"},
+		},
+		{BlockID: "co1t", ParentID: "co1", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Important note"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "> Important note") {
+		t.Errorf("expected callout with > prefix, got %q", result)
+	}
+}
+
+func TestRenderBlocks_Image(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"img1"}},
+		{BlockID: "img1", ParentID: "page", BlockType: 27, Image: &api.ImageBlock{
+			Token: "boxcnIMG456",
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[image: boxcnIMG456]") {
+		t.Errorf("expected image placeholder, got %q", result)
+	}
+}
+
+func TestRenderBlocks_MentionDoc(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{MentionDoc: &api.MentionDoc{
+					Token: "doccnABC",
+					Title: "Design Doc",
+					URL:   "https://example.com/doc",
+				}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[Design Doc](https://example.com/doc)") {
+		t.Errorf("expected mention doc link, got %q", result)
+	}
+}
+
+func TestRenderBlocks_MentionDocNoURL(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{MentionDoc: &api.MentionDoc{Token: "doccnABC", Title: "Design Doc"}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "Design Doc") {
+		t.Errorf("expected mention doc title, got %q", result)
+	}
+	if strings.Contains(result, "[Design Doc]") {
+		t.Errorf("should not render as link without URL, got %q", result)
+	}
+}
+
+func TestRenderBlocks_Grid(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"grid"}},
+		{BlockID: "grid", ParentID: "page", BlockType: 24,
+			Children: []string{"col1", "col2"},
+			Grid:     &api.GridBlock{ColumnSize: 2},
+		},
+		{BlockID: "col1", ParentID: "grid", BlockType: 25,
+			Children:   []string{"col1t"},
+			GridColumn: &api.GridColumnBlock{WidthRatio: 50},
+		},
+		{BlockID: "col1t", ParentID: "col1", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Column A"}}},
+		}},
+		{BlockID: "col2", ParentID: "grid", BlockType: 25,
+			Children:   []string{"col2t"},
+			GridColumn: &api.GridColumnBlock{WidthRatio: 50},
+		},
+		{BlockID: "col2t", ParentID: "col2", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Column B"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "Column A") || !strings.Contains(result, "Column B") {
+		t.Errorf("expected both column contents, got %q", result)
+	}
+}
+
+func TestRenderBlocks_QuoteContainer(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"qc1"}},
+		{BlockID: "qc1", ParentID: "page", BlockType: 34,
+			Children:       []string{"qc1t"},
+			QuoteContainer: &api.QuoteContainerBlock{},
+		},
+		{BlockID: "qc1t", ParentID: "qc1", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Quoted text"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "> Quoted text") {
+		t.Errorf("expected quote container with > prefix, got %q", result)
+	}
+}
+
+func TestRenderBlocks_FileBlock(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"f1"}},
+		{BlockID: "f1", ParentID: "page", BlockType: 23, File: &api.FileBlock{
+			Token: "boxcnFILE",
+			Name:  "report.pdf",
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[file: report.pdf]") {
+		t.Errorf("expected file placeholder with name, got %q", result)
+	}
+}
+
+func TestRenderBlocks_IframeBlock(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"ifr1"}},
+		{BlockID: "ifr1", ParentID: "page", BlockType: 26, Iframe: &api.IframeBlock{
+			Component: &api.IframeComponent{URL: "https://www.figma.com/embed"},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[embed: https://www.figma.com/embed]") {
+		t.Errorf("expected iframe embed, got %q", result)
+	}
+}
+
+func TestRenderBlocks_PlaceholderBlocks(t *testing.T) {
+	tests := []struct {
+		blockType int
+		expected  string
+	}{
+		{18, "[bitable]"},
+		{20, "[chat]"},
+		{21, "[diagram]"},
+		{28, "[isv]"},
+		{29, "[mindnote]"},
+		{30, "[sheet]"},
+		{36, "[okr]"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.expected, func(t *testing.T) {
+			// Capture stderr to verify no warnings
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+
+			blocks := []api.DocumentBlock{
+				{BlockID: "page", BlockType: 1, Children: []string{"b1"}},
+				{BlockID: "b1", ParentID: "page", BlockType: tc.blockType},
+			}
+			result := RenderBlocks(blocks)
+
+			w.Close()
+			var buf bytes.Buffer
+			buf.ReadFrom(r)
+			os.Stderr = oldStderr
+
+			if !strings.Contains(result, tc.expected) {
+				t.Errorf("expected %q in output, got %q", tc.expected, result)
+			}
+			if strings.Contains(buf.String(), "warning: unsupported") {
+				t.Errorf("should not warn for known block type %d", tc.blockType)
+			}
+		})
+	}
+}
+
+func TestRenderBlocks_IdentifierPlaceholders(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"task1", "jira1", "wiki1"}},
+		{BlockID: "task1", ParentID: "page", BlockType: 35, Task: &api.TaskBlock{TaskID: "t_12345"}},
+		{BlockID: "jira1", ParentID: "page", BlockType: 41, JiraIssue: &api.JiraIssueBlock{Key: "PROJ-123"}},
+		{BlockID: "wiki1", ParentID: "page", BlockType: 42, WikiCatalog: &api.WikiCatalogBlock{WikiToken: "wikcnABC"}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[task: t_12345]") {
+		t.Errorf("expected task with ID, got %q", result)
+	}
+	if !strings.Contains(result, "[jira: PROJ-123]") {
+		t.Errorf("expected jira with key, got %q", result)
+	}
+	if !strings.Contains(result, "[wiki: wikcnABC]") {
+		t.Errorf("expected wiki with token, got %q", result)
+	}
+}
+
+// --- Language Map Tests ---
+
+func TestCodeLanguageName_AllMapped(t *testing.T) {
+	for id := 1; id <= 75; id++ {
+		name := codeLanguageName(id)
+		if name == "" {
+			t.Errorf("language ID %d has no mapping", id)
+		}
+	}
+}
+
+func TestCodeLanguageName_SwiftScheme(t *testing.T) {
+	if got := codeLanguageName(58); got != "scheme" {
+		t.Errorf("language ID 58 should be 'scheme', got %q", got)
+	}
+	if got := codeLanguageName(61); got != "swift" {
+		t.Errorf("language ID 61 should be 'swift', got %q", got)
+	}
+}
+
+// --- Table.Cells Ordering Test ---
+
+func TestRenderBlocks_TableWithCellsOrdering(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"tbl"}},
+		{BlockID: "tbl", ParentID: "page", BlockType: 31,
+			// Children in wrong order
+			Children: []string{"c2", "c1"},
+			Table: &api.TableBlock{
+				// Cells in correct order
+				Cells:    []string{"c1", "c2"},
+				Property: &api.TableProperty{RowSize: 1, ColumnSize: 2},
+			},
+		},
+		{BlockID: "c1", ParentID: "tbl", BlockType: 32, Children: []string{"c1t"}},
+		{BlockID: "c1t", ParentID: "c1", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "First"}}},
+		}},
+		{BlockID: "c2", ParentID: "tbl", BlockType: 32, Children: []string{"c2t"}},
+		{BlockID: "c2t", ParentID: "c2", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Second"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	// Table.Cells should dictate order: c1 first, c2 second
+	if !strings.Contains(result, "| First | Second |") {
+		t.Errorf("expected cells in Table.Cells order, got %q", result)
 	}
 }
