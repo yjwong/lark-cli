@@ -220,7 +220,7 @@ Errors return JSON:
 
 Common error codes:
 - `AUTH_ERROR` - Need to run `lark auth login`
-- `SCOPE_ERROR` - Missing documents permissions. Run `lark auth login --add --scopes documents`
+- `SCOPE_ERROR` - Missing documents permissions. Run `lark auth login --scopes documents`
 - `API_ERROR` - Lark API issue (often permissions)
 - `NO_SHEETS` - Spreadsheet has no sheets
 
@@ -229,7 +229,7 @@ Common error codes:
 This skill requires the `documents` scope group (uses `drive:drive:readonly`). If you see a `SCOPE_ERROR`, the user needs to add documents permissions:
 
 ```bash
-LARK_CONFIG_DIR=tools/lark/.lark tools/bin/lark auth login --add --scopes documents
+LARK_CONFIG_DIR=tools/lark/.lark tools/bin/lark auth login --scopes documents
 ```
 
 To check current permissions:

@@ -179,7 +179,7 @@ Errors return JSON:
 
 Common error codes:
 - `CONNECTION_ERROR` - IMAP connection failed (check credentials)
-- `SCOPE_ERROR` - Missing mail permissions. Run `lark auth login --add --scopes mail`
+- `SCOPE_ERROR` - Missing mail permissions. Run `lark auth login --scopes mail`
 - `SYNC_ERROR` - Failed to sync emails
 - `SEARCH_ERROR` - Cache query failed
 - `VALIDATION_ERROR` - Missing required fields (e.g., --uid)
@@ -190,7 +190,7 @@ Common error codes:
 This skill requires the `mail` scope group. If you see a `SCOPE_ERROR`, the user needs to add mail permissions:
 
 ```bash
-lark auth login --add --scopes mail
+lark auth login --scopes mail
 ```
 
 To check current permissions:

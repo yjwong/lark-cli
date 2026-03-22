@@ -210,7 +210,7 @@ Errors return JSON:
 
 Common error codes:
 - `AUTH_ERROR` - Need to run `lark auth login`
-- `SCOPE_ERROR` - Missing calendar permissions. Run `lark auth login --add --scopes calendar`
+- `SCOPE_ERROR` - Missing calendar permissions. Run `lark auth login --scopes calendar`
 - `EVENT_NOT_FOUND` - Invalid event ID
 - `VALIDATION_ERROR` - Missing required fields
 - `API_ERROR` - Lark API issue
@@ -220,7 +220,7 @@ Common error codes:
 This skill requires the `calendar` scope group. If you see a `SCOPE_ERROR`, the user needs to add calendar permissions:
 
 ```bash
-lark auth login --add --scopes calendar
+lark auth login --scopes calendar
 ```
 
 To check current permissions:

@@ -2,18 +2,21 @@ package scopes
 
 import "strings"
 
-// ScopeGroup defines a group of OAuth scopes required for a set of commands
+// ScopeGroup defines a group of OAuth scopes required for a set of commands.
+// Scopes are the minimal user-token scopes needed for OAuth authorization.
 type ScopeGroup struct {
 	Name        string   // e.g., "calendar"
 	Description string   // e.g., "Calendar events and scheduling"
-	Scopes      []string // OAuth scope strings
+	Scopes      []string // Minimal OAuth scope strings (user-token only)
 	Commands    []string // CLI commands that require this group
 }
 
 // BaseScope is always required for token refresh
 const BaseScope = "offline_access"
 
-// Groups defines all available scope groups
+// Groups defines all available scope groups with minimal OAuth scopes.
+// These are the scopes requested during `lark auth login`.
+// For comprehensive app configuration scopes, see catalog.go.
 var Groups = map[string]ScopeGroup{
 	"calendar": {
 		Name:        "calendar",
@@ -47,7 +50,7 @@ var Groups = map[string]ScopeGroup{
 	},
 	"mail": {
 		Name:        "mail",
-		Description: "Email via IMAP",
+		Description: "Email (scopes for IMAP app password)",
 		Scopes:      []string{"mail:user_mailbox.message.address:read", "mail:user_mailbox.message.body:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message:readonly"},
 		Commands:    []string{"mail"},
 	},

@@ -298,7 +298,7 @@ Common error codes:
 This skill requires the `messages` scope group. If you see a `SCOPE_ERROR`, add permissions:
 
 ```bash
-lark auth login --add --scopes messages
+lark auth login --scopes messages
 ```
 
 To check current permissions:
