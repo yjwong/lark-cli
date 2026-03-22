@@ -158,7 +158,7 @@ Errors return JSON:
 
 Common error codes:
 - `AUTH_ERROR` - Need to run `lark auth login`
-- `SCOPE_ERROR` - Missing bitable permissions. Run `lark auth login --add --scopes bitable`
+- `SCOPE_ERROR` - Missing bitable permissions. Run `lark auth login --scopes bitable`
 - `API_ERROR` - Lark API issue (often permissions on the specific Bitable)
 
 ## Required Permissions
@@ -166,7 +166,7 @@ Common error codes:
 This skill requires the `bitable` scope group with the `bitable:app:readonly` scope. If you see a `SCOPE_ERROR`, add the permissions:
 
 ```bash
-lark auth login --add --scopes bitable
+lark auth login --scopes bitable
 ```
 
 To check current permissions:
