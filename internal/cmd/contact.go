@@ -10,9 +10,8 @@ var contactCmd = &cobra.Command{
 	Use:   "contact",
 	Short: "Contact commands",
 	Long:  "Look up users and departments in the company directory",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		validateScopeGroup("contacts")
-	},
+	// No PersistentPreRun: contact get/list-dept use tenant token (can't pre-validate),
+	// contact search/search-dept use user token (validated per-subcommand below).
 }
 
 // --- contact get ---
@@ -148,6 +147,9 @@ Examples:
   lark contact search "Zheng Peng"
   lark contact search "Bryan"`,
 	Args: cobra.ExactArgs(1),
+	PreRun: func(cmd *cobra.Command, args []string) {
+		validateScopeGroup("contacts")
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		query := args[0]
 
@@ -208,6 +210,9 @@ Examples:
   lark contact search-dept "Engineering"
   lark contact search-dept "Business"`,
 	Args: cobra.ExactArgs(1),
+	PreRun: func(cmd *cobra.Command, args []string) {
+		validateScopeGroup("contacts")
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		query := args[0]
 

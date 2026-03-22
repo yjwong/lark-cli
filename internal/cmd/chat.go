@@ -10,9 +10,7 @@ var chatCmd = &cobra.Command{
 	Use:   "chat",
 	Short: "Chat/group commands",
 	Long:  "Search and manage Lark chats and groups",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		validateScopeGroup("messages")
-	},
+	// No PersistentPreRun: chat commands use tenant token (can't pre-validate user scopes).
 }
 
 // --- chat search ---

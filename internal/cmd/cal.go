@@ -35,7 +35,7 @@ func validateScopeGroup(groupName string) {
 			"missing required permissions for %s commands\n\n"+
 				"Required scopes: %v\n\n"+
 				"To add these permissions, run:\n"+
-				"  lark auth login --add --scopes %s",
+				"  lark auth login --scopes %s",
 			group.Description, group.Scopes, groupName))
 	}
 }

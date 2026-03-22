@@ -20,9 +20,7 @@ var msgCmd = &cobra.Command{
 	Use:   "msg",
 	Short: "Message commands",
 	Long:  "Retrieve and manage messages in Lark chats",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		validateScopeGroup("messages")
-	},
+	// No PersistentPreRun: message commands use tenant token (can't pre-validate user scopes).
 }
 
 // --- msg history ---
