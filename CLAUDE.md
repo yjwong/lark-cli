@@ -79,6 +79,8 @@ See `USAGE.md` for full CLI documentation. Main commands:
 - `doc get <document_id>` - Get document content as markdown
 - `doc blocks <document_id>` - Get document block structure (JSON)
 - `doc wiki <node_token>` - Resolve wiki node to document token
+- `doc image <token> --doc <id>` - Download a single document image
+- `doc images <document_id> -o <dir>` - Batch download all images from a document
 
 ### Mail (`mail`)
 - `mail setup` - Configure IMAP credentials (interactive)

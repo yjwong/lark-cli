@@ -478,6 +478,14 @@ type GetUserResponse struct {
 	} `json:"data,omitempty"`
 }
 
+// BatchGetUserResponse is the response from GET /contact/v3/users/batch
+type BatchGetUserResponse struct {
+	BaseResponse
+	Data struct {
+		Items []ContactUser `json:"items,omitempty"`
+	} `json:"data,omitempty"`
+}
+
 // FindByDepartmentResponse is the response from GET /contact/v3/users/find_by_department
 type FindByDepartmentResponse struct {
 	BaseResponse
@@ -576,15 +584,21 @@ type Document struct {
 	Title      string `json:"title"`
 }
 
+// TextLink represents a hyperlink on a text element
+type TextLink struct {
+	URL string `json:"url"`
+}
+
 // TextElementStyle represents text styling
 type TextElementStyle struct {
-	Bold            bool `json:"bold,omitempty"`
-	Italic          bool `json:"italic,omitempty"`
-	Strikethrough   bool `json:"strikethrough,omitempty"`
-	Underline       bool `json:"underline,omitempty"`
-	InlineCode      bool `json:"inline_code,omitempty"`
-	BackgroundColor int  `json:"background_color,omitempty"`
-	TextColor       int  `json:"text_color,omitempty"`
+	Bold            bool      `json:"bold,omitempty"`
+	Italic          bool      `json:"italic,omitempty"`
+	Strikethrough   bool      `json:"strikethrough,omitempty"`
+	Underline       bool      `json:"underline,omitempty"`
+	InlineCode      bool      `json:"inline_code,omitempty"`
+	BackgroundColor int       `json:"background_color,omitempty"`
+	TextColor       int       `json:"text_color,omitempty"`
+	Link            *TextLink `json:"link,omitempty"`
 }
 
 // TextRun represents a text run element
@@ -608,11 +622,44 @@ type MentionDoc struct {
 	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
 }
 
+// Equation represents an inline KaTeX equation element
+type Equation struct {
+	Content          string            `json:"content,omitempty"`
+	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
+}
+
+// InlineReminder represents an inline date reminder element in document text
+type InlineReminder struct {
+	CreateUserID     string            `json:"create_user_id,omitempty"`
+	IsNotify         bool              `json:"is_notify,omitempty"`
+	IsWholeDay       bool              `json:"is_whole_day,omitempty"`
+	ExpireTime       int64             `json:"expire_time,omitempty"`
+	NotifyTime       int64             `json:"notify_time,omitempty"`
+	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
+}
+
+// InlineFile represents an inline file attachment element (output only)
+type InlineFile struct {
+	FileToken        string            `json:"file_token,omitempty"`
+	SourceBlockID    string            `json:"source_block_id,omitempty"`
+	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
+}
+
+// InlineBlock represents a reference to another block embedded inline (output only)
+type InlineBlock struct {
+	BlockID          string            `json:"block_id,omitempty"`
+	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
+}
+
 // TextElement represents a text element within a block
 type TextElement struct {
 	TextRun     *TextRun     `json:"text_run,omitempty"`
 	MentionUser *MentionUser `json:"mention_user,omitempty"`
 	MentionDoc  *MentionDoc  `json:"mention_doc,omitempty"`
+	Equation    *Equation    `json:"equation,omitempty"`
+	Reminder    *InlineReminder `json:"reminder,omitempty"`
+	InlineFile  *InlineFile  `json:"file,omitempty"`
+	InlineBlock *InlineBlock `json:"inline_block,omitempty"`
 }
 
 // TextStyle represents text block styling
@@ -641,6 +688,99 @@ type ImageBlock struct {
 // DividerBlock represents a divider (horizontal rule) in a document
 type DividerBlock struct{}
 
+// AddOnsBlock represents an add-ons block (e.g., Mermaid diagrams) in a document
+type AddOnsBlock struct {
+	ComponentID     string `json:"component_id,omitempty"`
+	ComponentTypeID string `json:"component_type_id,omitempty"`
+	Record          string `json:"record,omitempty"`
+}
+
+// TableBlock represents a table block (block_type 31)
+type TableBlock struct {
+	Cells    []string       `json:"cells,omitempty"`
+	Property *TableProperty `json:"property,omitempty"`
+}
+
+// TableProperty defines table dimensions and layout
+type TableProperty struct {
+	RowSize      int              `json:"row_size,omitempty"`
+	ColumnSize   int              `json:"column_size,omitempty"`
+	ColumnWidth  []int            `json:"column_width,omitempty"`
+	HeaderRow    bool             `json:"header_row,omitempty"`
+	HeaderColumn bool            `json:"header_column,omitempty"`
+	MergeInfo    []TableMergeInfo `json:"merge_info,omitempty"`
+}
+
+// TableMergeInfo represents cell merge information
+type TableMergeInfo struct {
+	RowSpan int `json:"row_span,omitempty"`
+	ColSpan int `json:"col_span,omitempty"`
+}
+
+// TableCellBlock represents a table cell (block_type 32)
+type TableCellBlock struct{}
+
+// CalloutBlock represents a callout block
+type CalloutBlock struct {
+	BackgroundColor int    `json:"background_color,omitempty"`
+	BorderColor     int    `json:"border_color,omitempty"`
+	TextColor       int    `json:"text_color,omitempty"`
+	EmojiID         string `json:"emoji_id,omitempty"`
+}
+
+// FileBlock represents a file attachment block (block_type 23)
+type FileBlock struct {
+	Token string `json:"token,omitempty"`
+	Name  string `json:"name,omitempty"`
+}
+
+// GridBlock represents a multi-column grid layout block (block_type 24)
+type GridBlock struct {
+	ColumnSize int `json:"column_size,omitempty"`
+}
+
+// GridColumnBlock represents a column within a grid (block_type 25)
+type GridColumnBlock struct {
+	WidthRatio int `json:"width_ratio,omitempty"`
+}
+
+// IframeComponent represents the embedded content in an iframe block
+type IframeComponent struct {
+	IframeType int    `json:"iframe_type,omitempty"`
+	URL        string `json:"url,omitempty"`
+}
+
+// IframeBlock represents an embedded iframe block (block_type 26)
+type IframeBlock struct {
+	Component *IframeComponent `json:"component,omitempty"`
+}
+
+// QuoteContainerBlock represents a quote container block (block_type 34)
+type QuoteContainerBlock struct{}
+
+// TaskBlock represents a task block (block_type 35)
+type TaskBlock struct {
+	TaskID string `json:"task_id,omitempty"`
+}
+
+// JiraIssueBlock represents a Jira issue block (block_type 41)
+type JiraIssueBlock struct {
+	ID  string `json:"id,omitempty"`
+	Key string `json:"key,omitempty"`
+}
+
+// WikiCatalogBlock represents a wiki catalog block (block_type 42)
+type WikiCatalogBlock struct {
+	WikiToken string `json:"wiki_token,omitempty"`
+}
+
+// SheetBlock represents an embedded sheet block (block_type 30)
+type SheetBlock struct {
+	Token      string `json:"token,omitempty"`
+	RowSize    int    `json:"row_size,omitempty"`
+	ColumnSize int    `json:"column_size,omitempty"`
+}
+
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
 	BlockID   string      `json:"block_id,omitempty"`
@@ -663,8 +803,21 @@ type DocumentBlock struct {
 	Code      *TextBlock  `json:"code,omitempty"`
 	Quote     *TextBlock  `json:"quote,omitempty"`
 	TodoBlock *TextBlock  `json:"todo,omitempty"`
-	Divider   *DividerBlock `json:"divider,omitempty"`
-	Image     *ImageBlock `json:"image,omitempty"`
+	Divider        *DividerBlock        `json:"divider,omitempty"`
+	File           *FileBlock           `json:"file,omitempty"`
+	Grid           *GridBlock           `json:"grid,omitempty"`
+	GridColumn     *GridColumnBlock     `json:"grid_column,omitempty"`
+	Iframe         *IframeBlock         `json:"iframe,omitempty"`
+	Image          *ImageBlock          `json:"image,omitempty"`
+	Sheet          *SheetBlock          `json:"sheet,omitempty"`
+	Table          *TableBlock          `json:"table,omitempty"`
+	TableCell      *TableCellBlock      `json:"table_cell,omitempty"`
+	QuoteContainer *QuoteContainerBlock `json:"quote_container,omitempty"`
+	Task           *TaskBlock           `json:"task,omitempty"`
+	Callout        *CalloutBlock        `json:"callout,omitempty"`
+	AddOns         *AddOnsBlock         `json:"add_ons,omitempty"`
+	JiraIssue      *JiraIssueBlock      `json:"jira_issue,omitempty"`
+	WikiCatalog    *WikiCatalogBlock    `json:"wiki_catalog,omitempty"`
 }
 
 // --- Document API Response Types ---
@@ -1414,6 +1567,17 @@ type SheetMetadataResponse struct {
 type SheetValuesResponse struct {
 	BaseResponse
 	Data *SheetValues `json:"data,omitempty"`
+}
+
+// SheetBatchValuesResponse is the response from GET /sheets/v2/spreadsheets/:token/values_batch_get
+type SheetBatchValuesResponse struct {
+	BaseResponse
+	Data struct {
+		Revision         int          `json:"revision,omitempty"`
+		SpreadsheetToken string       `json:"spreadsheetToken,omitempty"`
+		TotalCells       int          `json:"totalCells,omitempty"`
+		ValueRanges      []ValueRange `json:"valueRanges,omitempty"`
+	} `json:"data,omitempty"`
 }
 
 // --- Spreadsheet CLI Output Types ---

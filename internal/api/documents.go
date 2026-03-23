@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strconv"
+	"time"
 )
 
 // GetDocument retrieves document metadata
@@ -216,6 +218,37 @@ func (c *Client) GetMediaTempDownloadURL(fileToken, documentID string) (string, 
 	}
 
 	return resp.Data.TmpDownloadURLs[0].TmpDownloadURL, nil
+}
+
+// BatchGetMediaTempDownloadURLs gets temporary download URLs for multiple media files
+// fileTokens: the media tokens (e.g., image tokens from blocks)
+// documentID: optional document ID for authentication (required for document images)
+// Returns a map of file_token -> download URL (valid for 24 hours)
+func (c *Client) BatchGetMediaTempDownloadURLs(fileTokens []string, documentID string) (map[string]string, error) {
+	if len(fileTokens) == 0 {
+		return nil, nil
+	}
+
+	// Resolve URLs one at a time using the same method as GetMediaTempDownloadURL.
+	// The batch_get_tmp_download_url endpoint has a strict rate limit of 5 QPS,
+	// so we throttle requests with a 200ms minimum interval.
+	result := make(map[string]string, len(fileTokens))
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for i, token := range fileTokens {
+		if i > 0 {
+			<-ticker.C
+		}
+		dlURL, err := c.GetMediaTempDownloadURL(token, documentID)
+		if err != nil {
+			// Log warning but continue with other tokens
+			fmt.Fprintf(os.Stderr, "warning: could not resolve download URL for %s: %v\n", token, err)
+			continue
+		}
+		result[token] = dlURL
+	}
+
+	return result, nil
 }
 
 // DownloadMedia downloads a media file (image, attachment) from a document

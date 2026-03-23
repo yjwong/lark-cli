@@ -194,9 +194,14 @@ Use the `obj_token` value with `doc get` to retrieve the document content.
 
 ```bash
 lark doc get <document-id>
+lark doc get <document-id> --raw
 ```
 
-Returns document content as markdown - compact and readable.
+Returns document content as markdown using a block-based renderer. Produces clean markdown with proper tables, escaped syntax, `@mention` resolution, and Mermaid diagram support.
+
+Use `--raw` for legacy server-rendered markdown if needed.
+
+Images appear as `[image: TOKEN]` in the output. To download images, use `doc image` or `doc images`.
 
 Output:
 ```json
@@ -204,6 +209,29 @@ Output:
   "document_id": "ABC123xyz",
   "title": "My Document",
   "content": "# Heading\n\nDocument content as markdown..."
+}
+```
+
+### Download Document Images
+
+```bash
+# Single image
+lark doc image <image_token> --doc <document-id> -o image.png
+
+# Batch download all images
+lark doc images <document-id> -o /tmp/images/
+```
+
+Image tokens are found in `doc get` output as `[image: TOKEN]`.
+
+Batch output:
+```json
+{
+  "document_id": "ABC123xyz",
+  "images": [
+    {"token": "boxcnABC", "file": "/tmp/images/boxcnABC.png"},
+    {"token": "boxcnDEF", "file": "/tmp/images/boxcnDEF.jpg"}
+  ]
 }
 ```
 
@@ -414,6 +442,8 @@ Output:
 | Create a new document | `doc create` | Creates empty doc with title |
 | Append content to doc | `doc append` | Add text, headings, lists, code, etc. |
 | Read/summarize content | `doc get` | Markdown is compact (~90KB) |
+| Download a document image | `doc image <token> --doc <id>` | Single image by token |
+| Download all images | `doc images <id> -o <dir>` | Batch download for analysis |
 | Analyze structure | `doc blocks` | Full block hierarchy |
 | Search for text | `doc get` | Grep-able markdown |
 | Count elements | `doc blocks` | Block types enumerated |
@@ -421,7 +451,7 @@ Output:
 | List sheets in spreadsheet | `sheet list` | See all tabs and their sizes |
 | Read spreadsheet data | `sheet read` | Get cell values as JSON |
 
-**Default to `doc get`** - it's 2-3x smaller and sufficient for most tasks.
+**Default to `doc get`** - the markdown output is ~20x smaller than raw block JSON and sufficient for most tasks.
 
 ## Block Types Reference
 
@@ -434,12 +464,22 @@ When using `doc blocks`, key block types:
 | 3-11 | Headings H1-H9 |
 | 12 | Bullet list |
 | 13 | Ordered list |
-| 14 | Code block |
+| 14 | Code block (75 languages) |
 | 15 | Quote |
 | 17 | Todo/checkbox |
+| 18 | Bitable |
+| 19 | Callout |
 | 22 | Divider |
+| 23 | File |
+| 24-25 | Grid / Grid Column |
+| 26 | Iframe |
 | 27 | Image |
 | 31 | Table |
+| 34 | Quote Container |
+| 35 | Task |
+| 40 | Add-Ons (e.g., Mermaid diagrams) |
+| 41 | Jira Issue |
+| 42 | Wiki Catalog |
 
 ## Output Format
 
