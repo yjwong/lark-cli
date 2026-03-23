@@ -774,6 +774,13 @@ type WikiCatalogBlock struct {
 	WikiToken string `json:"wiki_token,omitempty"`
 }
 
+// SheetBlock represents an embedded sheet block (block_type 30)
+type SheetBlock struct {
+	Token      string `json:"token,omitempty"`
+	RowSize    int    `json:"row_size,omitempty"`
+	ColumnSize int    `json:"column_size,omitempty"`
+}
+
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
 	BlockID   string      `json:"block_id,omitempty"`
@@ -802,6 +809,7 @@ type DocumentBlock struct {
 	GridColumn     *GridColumnBlock     `json:"grid_column,omitempty"`
 	Iframe         *IframeBlock         `json:"iframe,omitempty"`
 	Image          *ImageBlock          `json:"image,omitempty"`
+	Sheet          *SheetBlock          `json:"sheet,omitempty"`
 	Table          *TableBlock          `json:"table,omitempty"`
 	TableCell      *TableCellBlock      `json:"table_cell,omitempty"`
 	QuoteContainer *QuoteContainerBlock `json:"quote_container,omitempty"`
@@ -1559,6 +1567,17 @@ type SheetMetadataResponse struct {
 type SheetValuesResponse struct {
 	BaseResponse
 	Data *SheetValues `json:"data,omitempty"`
+}
+
+// SheetBatchValuesResponse is the response from GET /sheets/v2/spreadsheets/:token/values_batch_get
+type SheetBatchValuesResponse struct {
+	BaseResponse
+	Data struct {
+		Revision         int          `json:"revision,omitempty"`
+		SpreadsheetToken string       `json:"spreadsheetToken,omitempty"`
+		TotalCells       int          `json:"totalCells,omitempty"`
+		ValueRanges      []ValueRange `json:"valueRanges,omitempty"`
+	} `json:"data,omitempty"`
 }
 
 // --- Spreadsheet CLI Output Types ---

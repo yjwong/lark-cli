@@ -2,6 +2,7 @@ package docrender
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -866,6 +867,172 @@ func TestRenderBlocks_IdentifierPlaceholders(t *testing.T) {
 	}
 	if !strings.Contains(result, "[wiki: wikcnABC]") {
 		t.Errorf("expected wiki with token, got %q", result)
+	}
+}
+
+// --- Sheet Block Tests ---
+
+func TestExtractSheetTokens(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "b1", BlockType: 30, Sheet: &api.SheetBlock{Token: "ABC_DEF"}},
+		{BlockID: "b2", BlockType: 30, Sheet: &api.SheetBlock{Token: "ABC_DEF"}}, // duplicate
+		{BlockID: "b3", BlockType: 30, Sheet: &api.SheetBlock{Token: "GHI_JKL"}},
+		{BlockID: "b4", BlockType: 30, Sheet: nil},                                // no sheet data
+		{BlockID: "b5", BlockType: 30, Sheet: &api.SheetBlock{Token: ""}},          // empty token
+		{BlockID: "b6", BlockType: 2},                                              // different block type
+	}
+	tokens := ExtractSheetTokens(blocks)
+	if len(tokens) != 2 {
+		t.Fatalf("expected 2 tokens, got %d: %v", len(tokens), tokens)
+	}
+	if tokens[0] != "ABC_DEF" || tokens[1] != "GHI_JKL" {
+		t.Errorf("unexpected tokens: %v", tokens)
+	}
+}
+
+func TestRenderBlocks_SheetWithData(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"s1"}},
+		{BlockID: "s1", ParentID: "page", BlockType: 30, Sheet: &api.SheetBlock{Token: "tok_123"}},
+	}
+	opts := RenderOptions{
+		SheetData: map[string][][]any{
+			"tok_123": {
+				{"Name", "Age", "Active"},
+				{"Alice", float64(30), true},
+				{nil, float64(0.5), "pipe|here"},
+			},
+		},
+	}
+	result := RenderBlocksWithOptions(blocks, opts)
+	if !strings.Contains(result, "| Name | Age | Active |") {
+		t.Errorf("expected header row, got %q", result)
+	}
+	if !strings.Contains(result, "| --- | --- | --- |") {
+		t.Errorf("expected separator, got %q", result)
+	}
+	if !strings.Contains(result, "| Alice | 30 | true |") {
+		t.Errorf("expected data row, got %q", result)
+	}
+	if !strings.Contains(result, "|  | 0.5 | pipe\\|here |") {
+		t.Errorf("expected nil/float/escaped pipe, got %q", result)
+	}
+}
+
+func TestRenderBlocks_SheetWithRichText(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"s1"}},
+		{BlockID: "s1", ParentID: "page", BlockType: 30, Sheet: &api.SheetBlock{Token: "tok_rt"}},
+	}
+	opts := RenderOptions{
+		SheetData: map[string][][]any{
+			"tok_rt": {
+				{"Header"},
+				{[]any{
+					map[string]any{"type": "text", "text": "Hello "},
+					map[string]any{"type": "url", "text": "World"},
+				}},
+				{map[string]any{"type": "embed-image", "fileToken": "abc"}},
+			},
+		},
+	}
+	result := RenderBlocksWithOptions(blocks, opts)
+	if !strings.Contains(result, "| Hello World |") {
+		t.Errorf("expected rich text concatenation, got %q", result)
+	}
+	if !strings.Contains(result, `| \[image\] |`) {
+		t.Errorf("expected escaped image placeholder, got %q", result)
+	}
+}
+
+func TestRenderBlocks_SheetWithTokenNoData(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"s1"}},
+		{BlockID: "s1", ParentID: "page", BlockType: 30, Sheet: &api.SheetBlock{Token: "tok_456"}},
+	}
+	// No SheetData provided — token not in map
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[sheet: tok_456]") {
+		t.Errorf("expected token fallback, got %q", result)
+	}
+}
+
+func TestRenderBlocks_SheetResolvedButEmpty(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"s1"}},
+		{BlockID: "s1", ParentID: "page", BlockType: 30, Sheet: &api.SheetBlock{Token: "tok_empty"}},
+	}
+	opts := RenderOptions{
+		SheetData: map[string][][]any{
+			"tok_empty": {}, // resolved but empty
+		},
+	}
+	result := RenderBlocksWithOptions(blocks, opts)
+	if !strings.Contains(result, "[empty sheet]") {
+		t.Errorf("expected empty sheet marker, got %q", result)
+	}
+}
+
+func TestRenderBlocks_SheetMarkdownEscaping(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"s1"}},
+		{BlockID: "s1", ParentID: "page", BlockType: 30, Sheet: &api.SheetBlock{Token: "tok_esc"}},
+	}
+	opts := RenderOptions{
+		SheetData: map[string][][]any{
+			"tok_esc": {
+				{"Header"},
+				{"*bold* and _italic_"},
+			},
+		},
+	}
+	result := RenderBlocksWithOptions(blocks, opts)
+	// Should escape markdown characters
+	if strings.Contains(result, "| *bold*") {
+		t.Errorf("expected markdown escaping of *bold*, got %q", result)
+	}
+	if !strings.Contains(result, `\*bold\*`) {
+		t.Errorf("expected escaped asterisks, got %q", result)
+	}
+}
+
+func TestRenderBlocks_SheetNoToken(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"s1"}},
+		{BlockID: "s1", ParentID: "page", BlockType: 30},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[sheet]") {
+		t.Errorf("expected bare placeholder, got %q", result)
+	}
+}
+
+func TestRenderBlocks_SheetTruncation(t *testing.T) {
+	// Build a sheet with more than maxInlineSheetRows
+	rows := make([][]any, 210)
+	rows[0] = []any{"Col1"}
+	for i := 1; i < 210; i++ {
+		rows[i] = []any{fmt.Sprintf("row%d", i)}
+	}
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"s1"}},
+		{BlockID: "s1", ParentID: "page", BlockType: 30, Sheet: &api.SheetBlock{Token: "tok_big"}},
+	}
+	opts := RenderOptions{
+		SheetData: map[string][][]any{
+			"tok_big": rows,
+		},
+	}
+	result := RenderBlocksWithOptions(blocks, opts)
+	if !strings.Contains(result, "*[10 more rows truncated]*") {
+		t.Errorf("expected truncation marker, got %q", result)
+	}
+	// Should contain row 199 (last rendered) but not row 200
+	if !strings.Contains(result, "row199") {
+		t.Errorf("expected row199 in output")
+	}
+	if strings.Contains(result, "row200") {
+		t.Errorf("row200 should be truncated")
 	}
 }
 

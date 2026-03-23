@@ -17,6 +17,9 @@ type RenderOptions struct {
 	// UserNames maps user IDs (e.g., "ou_xxx") to display names.
 	// If nil or a user ID is missing, falls back to @user_id.
 	UserNames map[string]string
+	// SheetData maps embedded sheet block tokens to their cell values.
+	// If nil or a token is missing, falls back to [sheet: token].
+	SheetData map[string][][]any
 }
 
 // blockNode wraps a DocumentBlock with resolved children for tree traversal
@@ -78,6 +81,19 @@ func ExtractImageTokens(blocks []api.DocumentBlock) []string {
 		if b.BlockType == 27 && b.Image != nil && b.Image.Token != "" && !seen[b.Image.Token] {
 			seen[b.Image.Token] = true
 			tokens = append(tokens, b.Image.Token)
+		}
+	}
+	return tokens
+}
+
+// ExtractSheetTokens collects all unique embedded sheet tokens from a block list
+func ExtractSheetTokens(blocks []api.DocumentBlock) []string {
+	seen := make(map[string]bool)
+	var tokens []string
+	for _, b := range blocks {
+		if b.BlockType == 30 && b.Sheet != nil && b.Sheet.Token != "" && !seen[b.Sheet.Token] {
+			seen[b.Sheet.Token] = true
+			tokens = append(tokens, b.Sheet.Token)
 		}
 	}
 	return tokens
@@ -301,7 +317,19 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 		sb.WriteString("[mindnote]\n\n")
 
 	case 30: // Sheet
-		sb.WriteString("[sheet]\n\n")
+		if node.block.Sheet != nil && node.block.Sheet.Token != "" {
+			values, resolved := r.opts.SheetData[node.block.Sheet.Token]
+			if resolved && len(values) > 0 {
+				r.renderSheetAsTable(sb, values)
+			} else if resolved {
+				// Fetched successfully but sheet is empty
+				sb.WriteString("[empty sheet]\n\n")
+			} else {
+				sb.WriteString(fmt.Sprintf("[sheet: %s]\n\n", node.block.Sheet.Token))
+			}
+		} else {
+			sb.WriteString("[sheet]\n\n")
+		}
 
 	case 31: // Table
 		r.renderTable(sb, node)
@@ -466,6 +494,108 @@ func (r *renderer) renderTableCell(cell *blockNode) string {
 	// Markdown table cells must be single-line; replace any newlines with spaces
 	result = strings.ReplaceAll(result, "\n", " ")
 	return result
+}
+
+// MaxInlineSheetRows is the maximum rows to render for embedded sheets in documents.
+// Smaller than the standalone sheet read cap (1000) to keep document output readable.
+// Exported so that the fetch logic in cmd/doc.go can use the same cap.
+const MaxInlineSheetRows = 200
+
+// renderSheetAsTable renders spreadsheet cell values as a markdown table.
+func (r *renderer) renderSheetAsTable(sb *strings.Builder, values [][]any) {
+	if len(values) == 0 {
+		return
+	}
+
+	// Determine max column count
+	cols := 0
+	for _, row := range values {
+		if len(row) > cols {
+			cols = len(row)
+		}
+	}
+	if cols == 0 {
+		return
+	}
+
+	// Cap rows for inline rendering
+	truncated := 0
+	rows := values
+	if len(rows) > MaxInlineSheetRows {
+		truncated = len(rows) - MaxInlineSheetRows
+		rows = rows[:MaxInlineSheetRows]
+	}
+
+	for i, row := range rows {
+		sb.WriteString("|")
+		for c := 0; c < cols; c++ {
+			cellContent := ""
+			if c < len(row) && row[c] != nil {
+				cellContent = stringifySheetCell(row[c])
+			}
+			// Markdown safety: escape inline markdown, pipes, and flatten newlines
+			cellContent = escapeMarkdown(cellContent)
+			cellContent = strings.ReplaceAll(cellContent, "|", "\\|")
+			cellContent = strings.ReplaceAll(cellContent, "\n", " ")
+			sb.WriteString(" ")
+			sb.WriteString(cellContent)
+			sb.WriteString(" |")
+		}
+		sb.WriteString("\n")
+
+		// Separator after header row
+		if i == 0 {
+			sb.WriteString("|")
+			for c := 0; c < cols; c++ {
+				sb.WriteString(" --- |")
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	if truncated > 0 {
+		sb.WriteString(fmt.Sprintf("*[%d more rows truncated]*\n", truncated))
+	}
+	sb.WriteString("\n")
+}
+
+// stringifySheetCell converts a sheet cell value to a plain text string.
+// With valueRenderOption=ToString, most cells are strings. This handles
+// residual types as fallback.
+func stringifySheetCell(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		return fmt.Sprintf("%g", val)
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case []any:
+		// Rich text segments — extract "text" field from each segment
+		var parts []string
+		for _, seg := range val {
+			if m, ok := seg.(map[string]any); ok {
+				if text, ok := m["text"].(string); ok {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "")
+	case map[string]any:
+		// Embedded objects (e.g., images)
+		if t, ok := val["type"].(string); ok && t == "embed-image" {
+			return "[image]"
+		}
+		if text, ok := val["text"].(string); ok && text != "" {
+			return text
+		}
+		return "[embedded object]"
+	default:
+		return fmt.Sprint(v)
+	}
 }
 
 // renderAddOns renders an AddOns block, detecting the type from component_type_id
