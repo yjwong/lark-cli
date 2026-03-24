@@ -470,30 +470,105 @@ func (r *renderer) renderTableCell(cell *blockNode) string {
 
 	var parts []string
 	for _, child := range cell.children {
-		text := ""
-		switch child.block.BlockType {
-		case 2: // Text
-			text = r.renderTextBlock(child.block.Text)
-		case 12: // Bullet in cell
-			text = "- " + r.renderTextBlock(child.block.Bullet)
-		case 13: // Ordered in cell
-			text = r.renderTextBlock(child.block.Ordered)
-		default:
-			tb := getAnyTextBlock(&child.block)
-			if tb != nil {
-				text = r.renderTextBlock(tb)
-			}
-		}
-		text = strings.TrimSpace(text)
-		if text != "" {
-			parts = append(parts, text)
-		}
+		r.collectCellText(child, &parts)
 	}
 
 	result := strings.Join(parts, ", ")
 	// Markdown table cells must be single-line; replace any newlines with spaces
 	result = strings.ReplaceAll(result, "\n", " ")
 	return result
+}
+
+// collectCellText recursively extracts inline text from a block node and all
+// its descendants, appending results to parts. Handles nested lists, container
+// blocks, and non-text leaf blocks inside table cells.
+func (r *renderer) collectCellText(node *blockNode, parts *[]string) {
+	text := ""
+	switch node.block.BlockType {
+	// Text blocks
+	case 2: // Text
+		text = r.renderTextBlock(node.block.Text)
+	case 12: // Bullet
+		text = "- " + r.renderTextBlock(node.block.Bullet)
+	case 13: // Ordered
+		text = r.renderTextBlock(node.block.Ordered)
+
+	// Non-text leaf blocks — emit placeholders mirroring renderBlock
+	case 23: // File
+		if node.block.File != nil {
+			name := node.block.File.Name
+			if name == "" {
+				name = node.block.File.Token
+			}
+			text = fmt.Sprintf("[file: %s]", name)
+		} else {
+			text = "[file]"
+		}
+	case 26: // Iframe
+		if node.block.Iframe != nil && node.block.Iframe.Component != nil && node.block.Iframe.Component.URL != "" {
+			text = fmt.Sprintf("[embed: %s]", node.block.Iframe.Component.URL)
+		} else {
+			text = "[embed]"
+		}
+	case 27: // Image
+		if node.block.Image != nil {
+			text = fmt.Sprintf("[image: %s]", node.block.Image.Token)
+		} else {
+			text = "[image]"
+		}
+	case 30: // Sheet
+		if node.block.Sheet != nil && node.block.Sheet.Token != "" {
+			text = fmt.Sprintf("[sheet: %s]", node.block.Sheet.Token)
+		} else {
+			text = "[sheet]"
+		}
+	case 35: // Task
+		if node.block.Task != nil && node.block.Task.TaskID != "" {
+			text = fmt.Sprintf("[task: %s]", node.block.Task.TaskID)
+		} else {
+			text = "[task]"
+		}
+	case 41: // JiraIssue
+		if node.block.JiraIssue != nil {
+			key := node.block.JiraIssue.Key
+			if key == "" {
+				key = node.block.JiraIssue.ID
+			}
+			if key != "" {
+				text = fmt.Sprintf("[jira: %s]", key)
+			} else {
+				text = "[jira]"
+			}
+		} else {
+			text = "[jira]"
+		}
+	case 42: // WikiCatalog
+		if node.block.WikiCatalog != nil && node.block.WikiCatalog.WikiToken != "" {
+			text = fmt.Sprintf("[wiki: %s]", node.block.WikiCatalog.WikiToken)
+		} else {
+			text = "[wiki]"
+		}
+
+	// Container blocks — no own text, just recurse
+	case 19, 24, 25, 33, 34: // Callout, Grid, GridColumn, View, QuoteContainer
+		// Fall through to recursion below
+
+	default:
+		tb := getAnyTextBlock(&node.block)
+		if tb != nil {
+			text = r.renderTextBlock(tb)
+		}
+	}
+
+	text = strings.TrimSpace(text)
+	if text != "" {
+		*parts = append(*parts, text)
+	}
+
+	// Recurse into children
+	for _, child := range node.children {
+		r.collectCellText(child, parts)
+	}
 }
 
 // MaxInlineSheetRows is the maximum rows to render for embedded sheets in documents.

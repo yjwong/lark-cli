@@ -1085,3 +1085,106 @@ func TestRenderBlocks_TableWithCellsOrdering(t *testing.T) {
 		t.Errorf("expected cells in Table.Cells order, got %q", result)
 	}
 }
+
+// --- Nested Table Cell Tests ---
+
+// helper to build a 1x1 table with a single cell containing given child blocks
+func buildTableWithCell(cellChildren []string, extraBlocks []api.DocumentBlock) []api.DocumentBlock {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"tbl"}},
+		{BlockID: "tbl", ParentID: "page", BlockType: 31,
+			Children: []string{"cell"},
+			Table: &api.TableBlock{
+				Cells:    []string{"cell"},
+				Property: &api.TableProperty{RowSize: 1, ColumnSize: 1},
+			},
+		},
+		{BlockID: "cell", ParentID: "tbl", BlockType: 32, Children: cellChildren},
+	}
+	return append(blocks, extraBlocks...)
+}
+
+func TestRenderBlocks_TableCellNestedOrderedList(t *testing.T) {
+	blocks := buildTableWithCell([]string{"ol1"}, []api.DocumentBlock{
+		{BlockID: "ol1", ParentID: "cell", BlockType: 13, Children: []string{"ol2", "ol3", "ol4"},
+			Ordered: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Parent"}}}}},
+		{BlockID: "ol2", ParentID: "ol1", BlockType: 13,
+			Ordered: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Sub A"}}}}},
+		{BlockID: "ol3", ParentID: "ol1", BlockType: 13,
+			Ordered: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Sub B"}}}}},
+		{BlockID: "ol4", ParentID: "ol1", BlockType: 13,
+			Ordered: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Sub C"}}}}},
+	})
+	result := RenderBlocks(blocks)
+	for _, want := range []string{"Parent", "Sub A", "Sub B", "Sub C"} {
+		if !strings.Contains(result, want) {
+			t.Errorf("expected %q in cell, got %q", want, result)
+		}
+	}
+}
+
+func TestRenderBlocks_TableCellNestedBulletList(t *testing.T) {
+	blocks := buildTableWithCell([]string{"b1"}, []api.DocumentBlock{
+		{BlockID: "b1", ParentID: "cell", BlockType: 12, Children: []string{"b2"},
+			Bullet: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Top"}}}}},
+		{BlockID: "b2", ParentID: "b1", BlockType: 12,
+			Bullet: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Nested"}}}}},
+	})
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "- Top") || !strings.Contains(result, "- Nested") {
+		t.Errorf("expected nested bullets, got %q", result)
+	}
+}
+
+func TestRenderBlocks_TableCellDeeplyNested(t *testing.T) {
+	blocks := buildTableWithCell([]string{"l1"}, []api.DocumentBlock{
+		{BlockID: "l1", ParentID: "cell", BlockType: 13, Children: []string{"l2"},
+			Ordered: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "L1"}}}}},
+		{BlockID: "l2", ParentID: "l1", BlockType: 13, Children: []string{"l3"},
+			Ordered: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "L2"}}}}},
+		{BlockID: "l3", ParentID: "l2", BlockType: 13,
+			Ordered: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "L3"}}}}},
+	})
+	result := RenderBlocks(blocks)
+	for _, want := range []string{"L1", "L2", "L3"} {
+		if !strings.Contains(result, want) {
+			t.Errorf("expected %q in cell, got %q", want, result)
+		}
+	}
+}
+
+func TestRenderBlocks_TableCellGridWithText(t *testing.T) {
+	blocks := buildTableWithCell([]string{"grid"}, []api.DocumentBlock{
+		{BlockID: "grid", ParentID: "cell", BlockType: 24, Children: []string{"col"}},
+		{BlockID: "col", ParentID: "grid", BlockType: 25, Children: []string{"txt"}},
+		{BlockID: "txt", ParentID: "col", BlockType: 2,
+			Text: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Grid text"}}}}},
+	})
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "Grid text") {
+		t.Errorf("expected grid text in cell, got %q", result)
+	}
+}
+
+func TestRenderBlocks_TableCellViewWithFile(t *testing.T) {
+	blocks := buildTableWithCell([]string{"view"}, []api.DocumentBlock{
+		{BlockID: "view", ParentID: "cell", BlockType: 33, Children: []string{"file"}},
+		{BlockID: "file", ParentID: "view", BlockType: 23,
+			File: &api.FileBlock{Token: "tok123", Name: "report.pdf"}},
+	})
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[file: report.pdf]") {
+		t.Errorf("expected file placeholder in cell, got %q", result)
+	}
+}
+
+func TestRenderBlocks_TableCellNonTextLeaf(t *testing.T) {
+	blocks := buildTableWithCell([]string{"img"}, []api.DocumentBlock{
+		{BlockID: "img", ParentID: "cell", BlockType: 27,
+			Image: &api.ImageBlock{Token: "img_abc"}},
+	})
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[image: img_abc]") {
+		t.Errorf("expected image placeholder in cell, got %q", result)
+	}
+}
