@@ -388,7 +388,7 @@ func TestRenderBlocks_MixedDocument(t *testing.T) {
 		}},
 	}
 	result := RenderBlocks(blocks)
-	expected := "# Title\n\nSome text\n- Item 1\n- Item 2\n---\n\nAfter divider\n"
+	expected := "# Title\n\nSome text\n- Item 1\n- Item 2\n\n---\n\nAfter divider\n"
 	if result != expected {
 		t.Errorf("expected:\n%q\ngot:\n%q", expected, result)
 	}
@@ -1186,5 +1186,86 @@ func TestRenderBlocks_TableCellNonTextLeaf(t *testing.T) {
 	result := RenderBlocks(blocks)
 	if !strings.Contains(result, "[image: img_abc]") {
 		t.Errorf("expected image placeholder in cell, got %q", result)
+	}
+}
+
+// --- Blank Line Before Standalone Block Tests ---
+
+func TestRenderBlocks_BlankLineBeforeHeading(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1", "h1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2,
+			Text: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Some text"}}}}},
+		{BlockID: "h1", ParentID: "page", BlockType: 4,
+			Heading2: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "My Heading"}}}}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "Some text\n\n## My Heading") {
+		t.Errorf("expected blank line before heading, got %q", result)
+	}
+}
+
+func TestRenderBlocks_BlankLineBeforeCodeBlock(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1", "c1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2,
+			Text: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Before code"}}}}},
+		{BlockID: "c1", ParentID: "page", BlockType: 14,
+			Code: &api.TextBlock{
+				Style:    &api.TextStyle{Language: 49},
+				Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "x = 1"}}},
+			}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "Before code\n\n```") {
+		t.Errorf("expected blank line before code block, got %q", result)
+	}
+}
+
+func TestRenderBlocks_BlankLineBeforeDivider(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1", "d1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2,
+			Text: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Before divider"}}}}},
+		{BlockID: "d1", ParentID: "page", BlockType: 22, Divider: &api.DividerBlock{}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "Before divider\n\n---") {
+		t.Errorf("expected blank line before divider, got %q", result)
+	}
+}
+
+func TestRenderBlocks_BlankLineBeforeTable(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1", "tbl"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2,
+			Text: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Before table"}}}}},
+		{BlockID: "tbl", ParentID: "page", BlockType: 31,
+			Children: []string{"c1"},
+			Table: &api.TableBlock{
+				Cells:    []string{"c1"},
+				Property: &api.TableProperty{RowSize: 1, ColumnSize: 1},
+			}},
+		{BlockID: "c1", ParentID: "tbl", BlockType: 32, Children: []string{"ct"}},
+		{BlockID: "ct", ParentID: "c1", BlockType: 2,
+			Text: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Cell"}}}}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "Before table\n\n|") {
+		t.Errorf("expected blank line before table, got %q", result)
+	}
+}
+
+func TestRenderBlocks_BlankLineBeforePlaceholder(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1", "f1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2,
+			Text: &api.TextBlock{Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Before file"}}}}},
+		{BlockID: "f1", ParentID: "page", BlockType: 23,
+			File: &api.FileBlock{Token: "tok", Name: "doc.pdf"}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "Before file\n\n[file: doc.pdf]") {
+		t.Errorf("expected blank line before file placeholder, got %q", result)
 	}
 }

@@ -154,7 +154,49 @@ func (r *renderer) renderChildren(sb *strings.Builder, node *blockNode, depth in
 		} else {
 			orderedCounter = 0
 		}
+		// Ensure blank line before standalone blocks
+		if isStandaloneBlock(child.block.BlockType) {
+			ensureBlankLine(sb)
+		}
 		r.renderBlock(sb, child, depth, orderedCounter)
+	}
+}
+
+// ensureBlankLine ensures the builder ends with a double newline (blank line).
+// Used before standalone blocks to separate them from preceding content.
+func ensureBlankLine(sb *strings.Builder) {
+	s := sb.String()
+	if len(s) > 0 && !strings.HasSuffix(s, "\n\n") {
+		if strings.HasSuffix(s, "\n") {
+			sb.WriteString("\n")
+		} else {
+			sb.WriteString("\n\n")
+		}
+	}
+}
+
+// isStandaloneBlock returns true for block types that need a blank line before
+// them when following compact content (text, list items).
+func isStandaloneBlock(blockType int) bool {
+	switch blockType {
+	case 3, 4, 5, 6, 7, 8, 9, 10, 11: // Headings H1-H9
+		return true
+	case 14: // Code block
+		return true
+	case 15: // Quote
+		return true
+	case 19: // Callout
+		return true
+	case 22: // Divider
+		return true
+	case 31: // Table
+		return true
+	case 18, 20, 21, 23, 24, 26, 27, 28, 29, 30, 34, 35, 36, 37, 38, 39, 40, 41, 42:
+		// Bitable, ChatCard, Diagram, File, Grid, Iframe, Image, ISV, Mindnote,
+		// Sheet, QuoteContainer, Task, OKR types, AddOns, Jira, Wiki
+		return true
+	default:
+		return false
 	}
 }
 
