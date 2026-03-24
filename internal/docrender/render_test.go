@@ -821,7 +821,7 @@ func TestRenderBlocks_PlaceholderBlocks(t *testing.T) {
 		{28, "[isv]"},
 		{29, "[mindnote]"},
 		{30, "[sheet]"},
-		{36, "[okr]"},
+		{39, "[okr progress]"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.expected, func(t *testing.T) {
@@ -1267,5 +1267,166 @@ func TestRenderBlocks_BlankLineBeforePlaceholder(t *testing.T) {
 	result := RenderBlocks(blocks)
 	if !strings.Contains(result, "Before file\n\n[file: doc.pdf]") {
 		t.Errorf("expected blank line before file placeholder, got %q", result)
+	}
+}
+
+// --- Production-Readiness Fix Tests ---
+
+func TestInlineCodeWrap(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"simple", "foo", "`foo`"},
+		{"contains single backtick", "foo`bar", "``foo`bar``"},
+		{"contains double backtick", "foo``bar", "```foo``bar```"},
+		{"starts with backtick", "`foo", "`` `foo ``"},
+		{"ends with backtick", "foo`", "`` foo` ``"},
+		{"only backticks", "``", "``` `` ```"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := inlineCodeWrap(tc.input)
+			if got != tc.expected {
+				t.Errorf("inlineCodeWrap(%q) = %q, want %q", tc.input, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestDecodeURL_PreservesPlus(t *testing.T) {
+	// url.PathUnescape preserves + as literal, url.QueryUnescape would convert to space
+	got := decodeURL("https://example.com/a+b")
+	if got != "https://example.com/a+b" {
+		t.Errorf("expected + preserved, got %q", got)
+	}
+	// Normal percent-encoding still works
+	got = decodeURL("https://example.com/a%20b")
+	if got != "https://example.com/a b" {
+		t.Errorf("expected %%20 decoded to space, got %q", got)
+	}
+}
+
+func TestRenderBlocks_IframeURLDecoded(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"iframe1"}},
+		{BlockID: "iframe1", ParentID: "page", BlockType: 26,
+			Iframe: &api.IframeBlock{Component: &api.IframeComponent{
+				URL: "https%3A%2F%2Fexample.com%2Fpage",
+			}}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[embed: https://example.com/page]") {
+		t.Errorf("expected decoded iframe URL, got %q", result)
+	}
+}
+
+func TestRenderBlocks_TableNoHeaderRow(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"tbl"}},
+		{BlockID: "tbl", ParentID: "page", BlockType: 31,
+			Children: []string{"c1", "c2"},
+			Table: &api.TableBlock{
+				Cells:    []string{"c1", "c2"},
+				Property: &api.TableProperty{RowSize: 1, ColumnSize: 2, HeaderRow: false},
+			}},
+		{BlockID: "c1", ParentID: "tbl", BlockType: 32, Children: []string{"c1t"}},
+		{BlockID: "c1t", ParentID: "c1", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Data1"}}},
+		}},
+		{BlockID: "c2", ParentID: "tbl", BlockType: 32, Children: []string{"c2t"}},
+		{BlockID: "c2t", ParentID: "c2", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Data2"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	// Should have empty header row, separator, then data
+	if !strings.Contains(result, "|  |  |\n| --- | --- |\n| Data1 | Data2 |") {
+		t.Errorf("expected empty header with data below, got %q", result)
+	}
+}
+
+func TestRenderBlocks_TableWithHeaderRow(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"tbl"}},
+		{BlockID: "tbl", ParentID: "page", BlockType: 31,
+			Children: []string{"c1", "c2", "c3", "c4"},
+			Table: &api.TableBlock{
+				Cells:    []string{"c1", "c2", "c3", "c4"},
+				Property: &api.TableProperty{RowSize: 2, ColumnSize: 2, HeaderRow: true},
+			}},
+		{BlockID: "c1", ParentID: "tbl", BlockType: 32, Children: []string{"c1t"}},
+		{BlockID: "c1t", ParentID: "c1", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "H1"}}},
+		}},
+		{BlockID: "c2", ParentID: "tbl", BlockType: 32, Children: []string{"c2t"}},
+		{BlockID: "c2t", ParentID: "c2", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "H2"}}},
+		}},
+		{BlockID: "c3", ParentID: "tbl", BlockType: 32, Children: []string{"c3t"}},
+		{BlockID: "c3t", ParentID: "c3", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "D1"}}},
+		}},
+		{BlockID: "c4", ParentID: "tbl", BlockType: 32, Children: []string{"c4t"}},
+		{BlockID: "c4t", ParentID: "c4", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "D2"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "| H1 | H2 |\n| --- | --- |\n| D1 | D2 |") {
+		t.Errorf("expected header row with separator then data, got %q", result)
+	}
+}
+
+func TestRenderBlocks_OKRObjectiveWithText(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"okr"}},
+		{BlockID: "okr", ParentID: "page", BlockType: 36, Children: []string{"obj"}},
+		{BlockID: "obj", ParentID: "okr", BlockType: 37,
+			OKRObjective: &api.TextBlock{
+				Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Increase revenue"}}},
+			},
+			Children: []string{"kr"}},
+		{BlockID: "kr", ParentID: "obj", BlockType: 38,
+			OKRKeyResult: &api.TextBlock{
+				Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Grow by 20%"}}},
+			}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[objective] Increase revenue") {
+		t.Errorf("expected objective text, got %q", result)
+	}
+	if !strings.Contains(result, "[key result] Grow by 20%") {
+		t.Errorf("expected key result text, got %q", result)
+	}
+}
+
+func TestRenderBlocks_UnknownTextElement(t *testing.T) {
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{TextRun: &api.TextRun{Content: "known"}},
+				{}, // unknown element — all fields nil
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	os.Stderr = oldStderr
+
+	if !strings.Contains(result, "known") {
+		t.Errorf("expected known text, got %q", result)
+	}
+	if !strings.Contains(buf.String(), "unsupported text element") {
+		t.Errorf("expected stderr warning for unknown element, got %q", buf.String())
 	}
 }

@@ -818,6 +818,8 @@ type DocumentBlock struct {
 	AddOns         *AddOnsBlock         `json:"add_ons,omitempty"`
 	JiraIssue      *JiraIssueBlock      `json:"jira_issue,omitempty"`
 	WikiCatalog    *WikiCatalogBlock    `json:"wiki_catalog,omitempty"`
+	OKRObjective   *TextBlock           `json:"okr_objective,omitempty"`
+	OKRKeyResult   *TextBlock           `json:"okr_key_result,omitempty"`
 }
 
 // --- Document API Response Types ---

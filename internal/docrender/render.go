@@ -105,6 +105,7 @@ func allTextBlocks(b *api.DocumentBlock) []*api.TextBlock {
 		b.Page, b.Text, b.Heading1, b.Heading2, b.Heading3,
 		b.Heading4, b.Heading5, b.Heading6, b.Heading7, b.Heading8, b.Heading9,
 		b.Bullet, b.Ordered, b.Code, b.Quote, b.TodoBlock,
+		b.OKRObjective, b.OKRKeyResult,
 	}
 	var result []*api.TextBlock
 	for _, tb := range candidates {
@@ -342,7 +343,7 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 
 	case 26: // Iframe
 		if node.block.Iframe != nil && node.block.Iframe.Component != nil && node.block.Iframe.Component.URL != "" {
-			sb.WriteString(fmt.Sprintf("[embed: %s]\n\n", node.block.Iframe.Component.URL))
+			sb.WriteString(fmt.Sprintf("[embed: %s]\n\n", decodeURL(node.block.Iframe.Component.URL)))
 		} else {
 			sb.WriteString("[embed]\n\n")
 		}
@@ -401,8 +402,29 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 			sb.WriteString("[task]\n\n")
 		}
 
-	case 36, 37, 38, 39: // OKR, OKR Objective, OKR Key Result, OKR Progress
-		sb.WriteString("[okr]\n\n")
+	case 36: // OKR container
+		r.renderChildren(sb, node, depth)
+
+	case 37: // OKR Objective
+		if node.block.OKRObjective != nil {
+			text := r.renderTextBlock(node.block.OKRObjective)
+			if text != "" {
+				sb.WriteString("[objective] " + text + "\n")
+			}
+		}
+		r.renderChildren(sb, node, depth)
+
+	case 38: // OKR Key Result
+		if node.block.OKRKeyResult != nil {
+			text := r.renderTextBlock(node.block.OKRKeyResult)
+			if text != "" {
+				sb.WriteString("[key result] " + text + "\n")
+			}
+		}
+		r.renderChildren(sb, node, depth)
+
+	case 39: // OKR Progress
+		sb.WriteString("[okr progress]\n\n")
 
 	case 40: // AddOns
 		r.renderAddOns(sb, &node.block)
@@ -469,8 +491,24 @@ func (r *renderer) renderTable(sb *strings.Builder, node *blockNode) {
 		}
 	}
 
-	// Check if table has a header row
+	// Known limitations: header_column and merge_info have no markdown equivalent.
+	// header_column would require rendering certain columns in bold (not standard markdown).
+	// merge_info would require colspan/rowspan which markdown tables don't support.
 	hasHeader := prop.HeaderRow
+
+	// If no header row, emit an empty header row so data rows aren't promoted to header
+	if !hasHeader {
+		sb.WriteString("|")
+		for c := 0; c < cols; c++ {
+			sb.WriteString("  |")
+		}
+		sb.WriteString("\n")
+		sb.WriteString("|")
+		for c := 0; c < cols; c++ {
+			sb.WriteString(" --- |")
+		}
+		sb.WriteString("\n")
+	}
 
 	for row := 0; row < rows; row++ {
 		sb.WriteString("|")
@@ -488,17 +526,13 @@ func (r *renderer) renderTable(sb *strings.Builder, node *blockNode) {
 		}
 		sb.WriteString("\n")
 
-		// Add separator after first row (header or not — required by markdown)
-		if row == 0 {
+		// Add separator after first row when it's the header
+		if row == 0 && hasHeader {
 			sb.WriteString("|")
 			for c := 0; c < cols; c++ {
 				sb.WriteString(" --- |")
 			}
 			sb.WriteString("\n")
-
-			// If no header row, the first data row was just rendered as header.
-			// Markdown requires a header, so we accept this tradeoff.
-			_ = hasHeader
 		}
 	}
 	sb.WriteString("\n")
@@ -803,6 +837,8 @@ func (r *renderer) renderTextElements(elements []api.TextElement) string {
 			sb.WriteString(fmt.Sprintf("[file: %s]", elem.InlineFile.FileToken))
 		} else if elem.InlineBlock != nil {
 			sb.WriteString(fmt.Sprintf("[block: %s]", elem.InlineBlock.BlockID))
+		} else {
+			fmt.Fprintln(os.Stderr, "warning: unsupported text element, use --raw for full content")
 		}
 	}
 	result := sb.String()
@@ -838,7 +874,7 @@ func (r *renderer) renderTextRun(tr *api.TextRun) string {
 
 	// Apply inline code (don't combine with other styles, no escaping needed)
 	if style.InlineCode {
-		return "`" + content + "`"
+		return inlineCodeWrap(content)
 	}
 
 	// Escape markdown-significant characters in plain text
@@ -924,6 +960,12 @@ func getAnyTextBlock(block *api.DocumentBlock) *api.TextBlock {
 	if block.TodoBlock != nil {
 		return block.TodoBlock
 	}
+	if block.OKRObjective != nil {
+		return block.OKRObjective
+	}
+	if block.OKRKeyResult != nil {
+		return block.OKRKeyResult
+	}
 	return getHeadingTextBlock(block, block.BlockType-2)
 }
 
@@ -971,12 +1013,36 @@ func escapeMarkdown(s string) string {
 
 // decodeURL decodes a URL-encoded string from the Lark API.
 // The API returns URLs with percent-encoding (e.g., https%3A%2F%2F).
+// Uses PathUnescape (not QueryUnescape) to preserve '+' as literal.
 func decodeURL(s string) string {
-	decoded, err := url.QueryUnescape(s)
+	decoded, err := url.PathUnescape(s)
 	if err != nil {
 		return s
 	}
 	return decoded
+}
+
+// inlineCodeWrap wraps content in backtick delimiters, using enough backticks
+// to safely contain any backtick runs in the content (per CommonMark spec).
+func inlineCodeWrap(s string) string {
+	maxRun := 0
+	run := 0
+	for _, c := range s {
+		if c == '`' {
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", maxRun+1)
+	// CommonMark: add space padding if content starts/ends with backtick
+	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
+		return fence + " " + s + " " + fence
+	}
+	return fence + s + fence
 }
 
 // codeFence returns a backtick fence string long enough to safely wrap content.
