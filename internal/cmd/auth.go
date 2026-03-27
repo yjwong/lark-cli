@@ -11,10 +11,7 @@ import (
 	"github.com/yjwong/lark-cli/internal/scopes"
 )
 
-var (
-	loginScopes string
-	loginAdd    bool
-)
+var loginScopes string
 
 var authCmd = &cobra.Command{
 	Use:   "auth",
@@ -30,13 +27,12 @@ var loginCmd = &cobra.Command{
 By default, all permissions are requested. Use --scopes to request only specific
 scope groups for a minimal permission setup.
 
-Scope groups: calendar, contacts, documents, messages, mail, minutes
+Scope groups: calendar, contacts, documents, bitable, messages, mail, minutes
 
 Examples:
   lark auth login                           # All permissions (default)
   lark auth login --scopes calendar         # Only calendar permissions
-  lark auth login --scopes calendar,contacts # Calendar and contacts
-  lark auth login --add --scopes messages   # Add messaging to existing permissions`,
+  lark auth login --scopes calendar,contacts # Calendar and contacts`,
 	Run: func(cmd *cobra.Command, args []string) {
 		opts := auth.LoginOptions{}
 
@@ -105,39 +101,84 @@ var statusCmd = &cobra.Command{
 	},
 }
 
+var (
+	scopesJsonImport bool
+	scopesGroups     string
+)
+
 var scopesCmd = &cobra.Command{
 	Use:   "scopes",
-	Short: "List available scope groups",
-	Long:  "Display all available scope groups and their permissions",
+	Short: "List scope groups or generate batch-import JSON",
+	Long: `Display available scope groups and their permissions.
+
+Use --json-import to generate JSON for Lark's scope batch import feature,
+which configures your app's tenant and user scopes.
+
+Examples:
+  lark auth scopes                                    # List all scope groups
+  lark auth scopes --json-import                      # Batch-import JSON (all groups)
+  lark auth scopes --json-import --groups calendar     # Batch-import JSON (specific groups)
+  lark auth scopes --json-import --groups calendar,contacts`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if scopesJsonImport {
+			// Generate batch-import JSON
+			var groupNames []string
+			if scopesGroups != "" {
+				groups, invalid := scopes.ParseGroups(scopesGroups)
+				if len(invalid) > 0 {
+					output.Fatal("VALIDATION_ERROR", fmt.Errorf("invalid scope groups: %s\nValid groups: %s",
+						strings.Join(invalid, ", "),
+						strings.Join(scopes.AllGroupNames(), ", ")))
+				}
+				groupNames = groups
+			} else {
+				groupNames = scopes.AllGroupNames()
+			}
+
+			jsonBytes, err := scopes.GenerateBatchImportJSON(groupNames)
+			if err != nil {
+				output.Fatal("SCOPE_ERROR", err)
+			}
+			fmt.Println(string(jsonBytes))
+			return
+		}
+
+		// Default: list scope groups
 		type scopeGroupOutput struct {
-			Name        string   `json:"name"`
-			Description string   `json:"description"`
-			Commands    []string `json:"commands"`
-			Scopes      []string `json:"scopes"`
+			Name         string   `json:"name"`
+			Description  string   `json:"description"`
+			Commands     []string `json:"commands"`
+			OAuthScopes  int      `json:"oauth_scopes"`
+			TenantScopes int      `json:"tenant_scopes"`
+			UserScopes   int      `json:"user_scopes"`
 		}
 
 		groups := make([]scopeGroupOutput, 0, len(scopes.AllGroupNames()))
 		for _, name := range scopes.AllGroupNames() {
 			group := scopes.Groups[name]
+			cat := scopes.Catalog[name]
 			groups = append(groups, scopeGroupOutput{
-				Name:        group.Name,
-				Description: group.Description,
-				Commands:    group.Commands,
-				Scopes:      group.Scopes,
+				Name:         group.Name,
+				Description:  group.Description,
+				Commands:     group.Commands,
+				OAuthScopes:  len(group.Scopes),
+				TenantScopes: len(cat.TenantScopes),
+				UserScopes:   len(cat.UserScopes),
 			})
 		}
 
 		output.JSON(map[string]interface{}{
 			"groups": groups,
-			"usage":  "lark auth login --scopes <group1,group2,...>",
+			"usage":  "lark auth scopes --json-import [--groups <group1,group2,...>]",
 		})
 	},
 }
 
 func init() {
-	loginCmd.Flags().StringVar(&loginScopes, "scopes", "", "Comma-separated scope groups (calendar,contacts,documents,messages,mail,minutes)")
-	loginCmd.Flags().BoolVar(&loginAdd, "add", false, "Add to existing permissions (incremental authorization)")
+	loginCmd.Flags().StringVar(&loginScopes, "scopes", "", "Comma-separated scope groups (calendar,contacts,documents,bitable,messages,mail,minutes)")
+
+	scopesCmd.Flags().BoolVar(&scopesJsonImport, "json-import", false, "Output in Lark batch-import JSON format")
+	scopesCmd.Flags().StringVar(&scopesGroups, "groups", "", "Comma-separated scope groups to include")
 
 	authCmd.AddCommand(loginCmd)
 	authCmd.AddCommand(logoutCmd)

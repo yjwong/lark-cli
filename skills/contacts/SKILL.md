@@ -141,7 +141,7 @@ Errors return JSON:
 
 Common error codes:
 - `AUTH_ERROR` - Need to run `lark auth login`
-- `SCOPE_ERROR` - Missing contacts permissions. Run `lark auth login --add --scopes contacts`
+- `SCOPE_ERROR` - Missing contacts permissions. Run `lark auth login --scopes contacts`
 - `NOT_FOUND` - User or department not found
 - `API_ERROR` - Lark API issue
 
@@ -150,7 +150,7 @@ Common error codes:
 This skill requires the `contacts` scope group. If you see a `SCOPE_ERROR`, the user needs to add contacts permissions:
 
 ```bash
-lark auth login --add --scopes contacts
+lark auth login --scopes contacts
 ```
 
 To check current permissions:

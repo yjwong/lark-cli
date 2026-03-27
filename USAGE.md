@@ -63,9 +63,7 @@ All commands output JSON by default.
 # Login with specific scope groups only
 ./lark auth login --scopes calendar           # Only calendar permissions
 ./lark auth login --scopes calendar,contacts  # Calendar and contacts
-
-# Add permissions incrementally (without losing existing ones)
-./lark auth login --add --scopes messages
+# Lark accumulates grants across logins, so you can add more scopes later
 
 # Check authentication status (shows granted scopes)
 ./lark auth status
@@ -73,6 +71,10 @@ All commands output JSON by default.
 
 # List available scope groups
 ./lark auth scopes
+
+# Generate batch-import JSON for Lark app scope configuration
+./lark auth scopes --json-import                       # All groups
+./lark auth scopes --json-import --groups calendar,docs # Specific groups
 
 # Logout (clear stored tokens)
 ./lark auth logout
@@ -84,10 +86,11 @@ All commands output JSON by default.
 |-------|----------|-------------|
 | `calendar` | `cal *` | Calendar events and scheduling |
 | `contacts` | `contact *` | Company directory lookup |
-| `documents` | `doc *` | Lark Docs and Drive access |
+| `documents` | `doc *`, `sheet *` | Lark Docs, Drive, and Sheets access |
+| `bitable` | `bitable *` | Lark Bitable (database) access |
 | `messages` | `msg *`, `chat *` | Chat and messaging |
-| `mail` | `mail *` | Email via IMAP |
-| `minutes` | `minutes *` | Meeting recordings |
+| `mail` | `mail *` | Email (scopes for IMAP app password) |
+| `minutes` | `minutes *` | Meeting recordings and transcripts |
 
 By default, `lark auth login` requests all scopes. Use `--scopes` for minimal permissions.
 

@@ -40,6 +40,8 @@ See `USAGE.md` for full CLI documentation. Main commands:
 
 ### Auth
 - `auth login|status|logout` - Authentication
+- `auth scopes` - List scope groups
+- `auth scopes --json-import [--groups ...]` - Generate batch-import JSON for Lark app scope configuration
 
 ### Calendar (`cal`)
 - `cal list` - List events (supports `--week`, `--from`, `--to`)

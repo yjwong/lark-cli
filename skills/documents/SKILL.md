@@ -502,7 +502,7 @@ Errors return JSON:
 
 Common error codes:
 - `AUTH_ERROR` - Need to run `lark auth login`
-- `SCOPE_ERROR` - Missing documents permissions. Run `lark auth login --add --scopes documents`
+- `SCOPE_ERROR` - Missing documents permissions. Run `lark auth login --scopes documents`
 - `API_ERROR` - Lark API issue (often permissions)
 
 ## Required Permissions
@@ -510,7 +510,7 @@ Common error codes:
 This skill requires the `documents` scope group. If you see a `SCOPE_ERROR`, the user needs to add documents permissions:
 
 ```bash
-lark auth login --add --scopes documents
+lark auth login --scopes documents
 ```
 
 To check current permissions:
