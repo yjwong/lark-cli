@@ -1,5 +1,5 @@
 ---
-name: lark-daily-report
+name: lark-scan-report
 version: 3.0.0
 description: "Generate structured work reports from Feishu tasks and messages. Three report types: morning briefing (Mon-Fri 10:30), evening wrap-up (Mon-Fri 22:00), weekly summary (Sun 15:00). Uses weekly log accumulation — no redundant re-fetching. Triggers on: 'daily report', 'morning report', 'evening report', 'weekly summary', '日报', '晚报', '周报'."
 metadata:
@@ -384,7 +384,7 @@ When categorizing items from tasks and messages:
     "schedule": { "kind": "cron", "expr": "30 2 * * 1-5", "tz": "UTC" },
     "payload": {
       "kind": "systemEvent",
-      "text": "Generate morning report. Read lark-daily-report skill, load config.yaml, execute report_type=morning."
+      "text": "Generate morning report. Read lark-scan-report skill, load config.yaml, execute report_type=morning."
     }
   },
   {
@@ -392,7 +392,7 @@ When categorizing items from tasks and messages:
     "schedule": { "kind": "cron", "expr": "0 14 * * 1-5", "tz": "UTC" },
     "payload": {
       "kind": "systemEvent",
-      "text": "Generate evening report. Read lark-daily-report skill, load config.yaml, execute report_type=evening."
+      "text": "Generate evening report. Read lark-scan-report skill, load config.yaml, execute report_type=evening."
     }
   },
   {
@@ -400,7 +400,7 @@ When categorizing items from tasks and messages:
     "schedule": { "kind": "cron", "expr": "0 7 * * 0", "tz": "UTC" },
     "payload": {
       "kind": "systemEvent",
-      "text": "Generate weekly summary. Read lark-daily-report skill, load config.yaml, execute report_type=weekly."
+      "text": "Generate weekly summary. Read lark-scan-report skill, load config.yaml, execute report_type=weekly."
     }
   }
 ]
