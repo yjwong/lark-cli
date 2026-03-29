@@ -18,6 +18,12 @@ lark-cal
 # Dependency directories
 vendor/
 
+# Go build cache
+.gocache/
+
+# Scraper binary
+scripts/scrape-docs/scrape-docs
+
 # IDE
 .idea/
 .vscode/
