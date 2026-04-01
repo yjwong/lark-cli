@@ -9,13 +9,15 @@ import (
 	"github.com/yjwong/lark-cli/internal/config"
 )
 
-// Credentials holds IMAP connection settings
+// Credentials holds IMAP and SMTP connection settings
 type Credentials struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 	UseSSL   bool   `json:"use_ssl"`
+	SMTPHost string `json:"smtp_host,omitempty"`
+	SMTPPort int    `json:"smtp_port,omitempty"`
 }
 
 // CredentialsFilePath returns the path to the mail credentials file

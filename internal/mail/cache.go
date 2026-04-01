@@ -261,6 +261,28 @@ func (c *Cache) GetCachedBodyUIDs(mailbox string) (map[uint32]bool, error) {
 	return uids, nil
 }
 
+// GetUIDsSince returns the set of UIDs with envelope dates on or after the given time.
+func (c *Cache) GetUIDsSince(mailbox string, since time.Time) (map[uint32]bool, error) {
+	rows, err := c.db.Query(
+		`SELECT uid FROM envelopes WHERE mailbox = ? AND date >= ?`,
+		mailbox, since.Unix(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying UIDs since %s: %w", since.Format("2006-01-02"), err)
+	}
+	defer rows.Close()
+
+	uids := make(map[uint32]bool)
+	for rows.Next() {
+		var uid uint32
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scanning UID: %w", err)
+		}
+		uids[uid] = true
+	}
+	return uids, nil
+}
+
 // CountMessageBodies returns the number of cached bodies for a mailbox.
 func (c *Cache) CountMessageBodies(mailbox string) (int, error) {
 	var count int

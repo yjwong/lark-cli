@@ -219,6 +219,7 @@ var (
 	mailSyncMailbox string
 	mailSyncWorkers int
 	mailSyncBodies  bool
+	mailSyncSince   string
 )
 
 var mailSyncCmd = &cobra.Command{
@@ -239,6 +240,14 @@ Examples:
 			Workers:       mailSyncWorkers,
 			IncludeBodies: mailSyncBodies,
 			Progress:      os.Stderr,
+		}
+
+		if mailSyncSince != "" {
+			t, err := time.Parse("2006-01-02", mailSyncSince)
+			if err != nil {
+				output.Fatal("VALIDATION_ERROR", fmt.Errorf("invalid --since date %q: expected YYYY-MM-DD", mailSyncSince))
+			}
+			opts.BodiesSince = &t
 		}
 
 		result, err := mail.Sync(mailSyncMailbox, opts)
@@ -474,11 +483,388 @@ func formatFreshness(t time.Time) string {
 	}
 }
 
+// --- mail send ---
+
+var (
+	mailSendTo          []string
+	mailSendCC          []string
+	mailSendSubject     string
+	mailSendBody        string
+	mailSendBodyFile    string
+	mailSendInReplyTo   string
+	mailSendReferences  []string
+	mailSendAttachments []string
+)
+
+var mailSendCmd = &cobra.Command{
+	Use:   "send",
+	Short: "Send an email via SMTP",
+	Long: `Send an email via SMTP using stored credentials.
+
+The SMTP server is derived from the IMAP host (imap.x.com -> smtp.x.com) unless
+smtp_host/smtp_port are set in mail.json. Uses the same username/password as IMAP.
+
+Examples:
+  lark mail send --to user@example.com --subject "Hello" --body "Hi there"
+  lark mail send --to user@example.com --cc other@example.com --subject "Re: Thread" --body-file msg.txt --attach file.pdf
+  lark mail send --to user@example.com --subject "Re: Old Thread" --body "Reply" --in-reply-to "<msgid@server>" --attach video.mp4`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(mailSendTo) == 0 {
+			output.Fatalf("VALIDATION_ERROR", "--to is required")
+		}
+		if mailSendSubject == "" {
+			output.Fatalf("VALIDATION_ERROR", "--subject is required")
+		}
+
+		body := mailSendBody
+		if mailSendBodyFile != "" {
+			data, err := os.ReadFile(mailSendBodyFile)
+			if err != nil {
+				output.Fatal("IO_ERROR", fmt.Errorf("reading body file: %w", err))
+			}
+			body = string(data)
+		}
+		if body == "" {
+			output.Fatalf("VALIDATION_ERROR", "--body or --body-file is required")
+		}
+
+		opts := &mail.SendOptions{
+			To:          mailSendTo,
+			CC:          mailSendCC,
+			Subject:     mailSendSubject,
+			Body:        body,
+			InReplyTo:   mailSendInReplyTo,
+			References:  mailSendReferences,
+			Attachments: mailSendAttachments,
+		}
+
+		result, err := mail.Send(opts)
+		if err != nil {
+			output.Fatal("SEND_ERROR", err)
+		}
+
+		output.JSON(result)
+	},
+}
+
+// --- mail delete ---
+
+var (
+	mailDeleteMailbox string
+	mailDeleteUID     uint32
+)
+
+var mailDeleteCmd = &cobra.Command{
+	Use:   "delete",
+	Short: "Delete an email by UID",
+	Long: `Flag an email as \Deleted and expunge it.
+
+Examples:
+  lark mail delete --uid 12345
+  lark mail delete --mailbox Archive --uid 12345`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if mailDeleteUID == 0 {
+			output.Fatalf("VALIDATION_ERROR", "--uid is required")
+		}
+
+		client, err := mail.Connect()
+		if err != nil {
+			output.Fatal("CONNECTION_ERROR", err)
+		}
+		defer client.Close()
+
+		_, err = client.SelectMailbox(mailDeleteMailbox)
+		if err != nil {
+			output.Fatal("IMAP_ERROR", err)
+		}
+
+		if err := client.DeleteMessage(mail.UID(mailDeleteUID)); err != nil {
+			output.Fatal("IMAP_ERROR", err)
+		}
+
+		output.JSON(map[string]interface{}{
+			"success": true,
+			"message": "message deleted",
+			"uid":     mailDeleteUID,
+			"mailbox": mailDeleteMailbox,
+		})
+	},
+}
+
+// --- mail move ---
+
+var (
+	mailMoveMailbox string
+	mailMoveUID     uint32
+	mailMoveDest    string
+)
+
+var mailMoveCmd = &cobra.Command{
+	Use:   "move",
+	Short: "Move an email to another mailbox",
+	Long: `Move an email by UID to a different mailbox/folder.
+
+Examples:
+  lark mail move --uid 12345 --dest Archive
+  lark mail move --mailbox INBOX --uid 12345 --dest Trash`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if mailMoveUID == 0 {
+			output.Fatalf("VALIDATION_ERROR", "--uid is required")
+		}
+		if mailMoveDest == "" {
+			output.Fatalf("VALIDATION_ERROR", "--dest is required")
+		}
+
+		client, err := mail.Connect()
+		if err != nil {
+			output.Fatal("CONNECTION_ERROR", err)
+		}
+		defer client.Close()
+
+		_, err = client.SelectMailbox(mailMoveMailbox)
+		if err != nil {
+			output.Fatal("IMAP_ERROR", err)
+		}
+
+		if err := client.MoveMessage(mail.UID(mailMoveUID), mailMoveDest); err != nil {
+			output.Fatal("IMAP_ERROR", err)
+		}
+
+		output.JSON(map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("message moved to %s", mailMoveDest),
+			"uid":     mailMoveUID,
+			"from":    mailMoveMailbox,
+			"to":      mailMoveDest,
+		})
+	},
+}
+
+// --- mail reply ---
+
+var (
+	mailReplyMailbox     string
+	mailReplyUID         uint32
+	mailReplyBody        string
+	mailReplyBodyFile    string
+	mailReplyCC          []string
+	mailReplyAttachments []string
+	mailReplyAsDraft     bool
+)
+
+var mailReplyCmd = &cobra.Command{
+	Use:   "reply",
+	Short: "Reply to an email by UID",
+	Long: `Reply to an email, automatically setting threading headers (In-Reply-To, References, Subject).
+
+By default sends the reply via SMTP. Use --draft to save as a draft instead.
+
+Examples:
+  lark mail reply --uid 12345 --body "Thanks for the update"
+  lark mail reply --mailbox Archive --uid 12345 --body-file reply.txt --attach report.pdf
+  lark mail reply --uid 12345 --body "Will review" --draft`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if mailReplyUID == 0 {
+			output.Fatalf("VALIDATION_ERROR", "--uid is required")
+		}
+
+		body := mailReplyBody
+		if mailReplyBodyFile != "" {
+			data, err := os.ReadFile(mailReplyBodyFile)
+			if err != nil {
+				output.Fatal("IO_ERROR", fmt.Errorf("reading body file: %w", err))
+			}
+			body = string(data)
+		}
+		if body == "" {
+			output.Fatalf("VALIDATION_ERROR", "--body or --body-file is required")
+		}
+
+		// Connect and fetch threading info + body from the original message
+		client, err := mail.Connect()
+		if err != nil {
+			output.Fatal("CONNECTION_ERROR", err)
+		}
+
+		_, err = client.SelectMailbox(mailReplyMailbox)
+		if err != nil {
+			client.Close()
+			output.Fatal("IMAP_ERROR", err)
+		}
+
+		msgID, refs, subject, fromAddr, err := client.FetchThreadingInfo(mail.UID(mailReplyUID))
+		if err != nil {
+			client.Close()
+			output.Fatal("IMAP_ERROR", err)
+		}
+
+		// Fetch original message body for quoting
+		origBody, origEnvelope, err := client.FetchMessage(mail.UID(mailReplyUID))
+		client.Close()
+		if err != nil {
+			output.Fatal("IMAP_ERROR", err)
+		}
+
+		// Build quoted reply body
+		quotedOriginal := mail.ExtractAndQuoteBody(origBody, origEnvelope, fromAddr)
+		fullBody := body + "\n\n" + quotedOriginal
+
+		// Build References: existing refs + the message we're replying to
+		var newRefs []string
+		newRefs = append(newRefs, refs...)
+		if msgID != "" {
+			inReplyTo := "<" + msgID + ">"
+			newRefs = append(newRefs, inReplyTo)
+
+			// Extract Lark thread prefix from References chain for threading in Lark UI
+			larkThreadPrefix := mail.ExtractLarkThreadPrefix(newRefs)
+
+			// Build subject
+			replySubject := subject
+			if !strings.HasPrefix(strings.ToLower(subject), "re:") {
+				replySubject = "Re: " + subject
+			}
+
+			// Default recipient is the original sender
+			to := []string{fromAddr}
+
+			opts := &mail.SendOptions{
+				To:               to,
+				CC:               mailReplyCC,
+				Subject:          replySubject,
+				Body:             fullBody,
+				InReplyTo:        inReplyTo,
+				References:       newRefs,
+				Attachments:      mailReplyAttachments,
+				LarkThreadPrefix: larkThreadPrefix,
+			}
+
+			if mailReplyAsDraft {
+				result, err := mail.SaveDraft(opts)
+				if err != nil {
+					output.Fatal("DRAFT_ERROR", err)
+				}
+				output.JSON(result)
+			} else {
+				result, err := mail.Send(opts)
+				if err != nil {
+					output.Fatal("SEND_ERROR", err)
+				}
+				output.JSON(result)
+			}
+		} else {
+			output.Fatalf("IMAP_ERROR", "could not extract Message-ID from original email")
+		}
+	},
+}
+
+// --- mail draft ---
+
+var (
+	mailDraftTo          []string
+	mailDraftCC          []string
+	mailDraftSubject     string
+	mailDraftBody        string
+	mailDraftBodyFile    string
+	mailDraftInReplyTo   string
+	mailDraftReferences  []string
+	mailDraftAttachments []string
+)
+
+var mailDraftCmd = &cobra.Command{
+	Use:   "draft",
+	Short: "Save an email as a draft via IMAP",
+	Long: `Build a MIME message and save it as a draft in your Drafts folder via IMAP APPEND.
+
+The draft can then be reviewed, edited, and sent from your mail client.
+
+Examples:
+  lark mail draft --to user@example.com --subject "Hello" --body "Hi there"
+  lark mail draft --to user@example.com --subject "Re: Thread" --body-file msg.txt --attach file.pdf
+  lark mail draft --to user@example.com --cc other@example.com --subject "Re: Old" --body-file reply.txt --in-reply-to "<msgid@server>" --attach video.mp4`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(mailDraftTo) == 0 {
+			output.Fatalf("VALIDATION_ERROR", "--to is required")
+		}
+		if mailDraftSubject == "" {
+			output.Fatalf("VALIDATION_ERROR", "--subject is required")
+		}
+
+		body := mailDraftBody
+		if mailDraftBodyFile != "" {
+			data, err := os.ReadFile(mailDraftBodyFile)
+			if err != nil {
+				output.Fatal("IO_ERROR", fmt.Errorf("reading body file: %w", err))
+			}
+			body = string(data)
+		}
+		if body == "" {
+			output.Fatalf("VALIDATION_ERROR", "--body or --body-file is required")
+		}
+
+		opts := &mail.SendOptions{
+			To:          mailDraftTo,
+			CC:          mailDraftCC,
+			Subject:     mailDraftSubject,
+			Body:        body,
+			InReplyTo:   mailDraftInReplyTo,
+			References:  mailDraftReferences,
+			Attachments: mailDraftAttachments,
+		}
+
+		result, err := mail.SaveDraft(opts)
+		if err != nil {
+			output.Fatal("DRAFT_ERROR", err)
+		}
+
+		output.JSON(result)
+	},
+}
+
 func init() {
+	// mail delete flags
+	mailDeleteCmd.Flags().StringVarP(&mailDeleteMailbox, "mailbox", "m", "INBOX", "Mailbox")
+	mailDeleteCmd.Flags().Uint32Var(&mailDeleteUID, "uid", 0, "Email UID (required)")
+
+	// mail move flags
+	mailMoveCmd.Flags().StringVarP(&mailMoveMailbox, "mailbox", "m", "INBOX", "Source mailbox")
+	mailMoveCmd.Flags().Uint32Var(&mailMoveUID, "uid", 0, "Email UID (required)")
+	mailMoveCmd.Flags().StringVar(&mailMoveDest, "dest", "", "Destination mailbox (required)")
+
+	// mail reply flags
+	mailReplyCmd.Flags().StringVarP(&mailReplyMailbox, "mailbox", "m", "INBOX", "Mailbox containing the email to reply to")
+	mailReplyCmd.Flags().Uint32Var(&mailReplyUID, "uid", 0, "UID of email to reply to (required)")
+	mailReplyCmd.Flags().StringVar(&mailReplyBody, "body", "", "Reply body text")
+	mailReplyCmd.Flags().StringVar(&mailReplyBodyFile, "body-file", "", "Read reply body from file")
+	mailReplyCmd.Flags().StringSliceVar(&mailReplyCC, "cc", nil, "CC email address(es)")
+	mailReplyCmd.Flags().StringSliceVar(&mailReplyAttachments, "attach", nil, "File path(s) to attach")
+	mailReplyCmd.Flags().BoolVar(&mailReplyAsDraft, "draft", false, "Save as draft instead of sending")
+
+	// mail draft flags
+	mailDraftCmd.Flags().StringSliceVar(&mailDraftTo, "to", nil, "Recipient email address(es)")
+	mailDraftCmd.Flags().StringSliceVar(&mailDraftCC, "cc", nil, "CC email address(es)")
+	mailDraftCmd.Flags().StringVar(&mailDraftSubject, "subject", "", "Email subject")
+	mailDraftCmd.Flags().StringVar(&mailDraftBody, "body", "", "Email body text")
+	mailDraftCmd.Flags().StringVar(&mailDraftBodyFile, "body-file", "", "Read email body from file")
+	mailDraftCmd.Flags().StringVar(&mailDraftInReplyTo, "in-reply-to", "", "Message-ID to reply to (for threading)")
+	mailDraftCmd.Flags().StringSliceVar(&mailDraftReferences, "references", nil, "Message-ID chain for threading")
+	mailDraftCmd.Flags().StringSliceVar(&mailDraftAttachments, "attach", nil, "File path(s) to attach")
+
+	// mail send flags
+	mailSendCmd.Flags().StringSliceVar(&mailSendTo, "to", nil, "Recipient email address(es)")
+	mailSendCmd.Flags().StringSliceVar(&mailSendCC, "cc", nil, "CC email address(es)")
+	mailSendCmd.Flags().StringVar(&mailSendSubject, "subject", "", "Email subject")
+	mailSendCmd.Flags().StringVar(&mailSendBody, "body", "", "Email body text")
+	mailSendCmd.Flags().StringVar(&mailSendBodyFile, "body-file", "", "Read email body from file")
+	mailSendCmd.Flags().StringVar(&mailSendInReplyTo, "in-reply-to", "", "Message-ID to reply to (for threading)")
+	mailSendCmd.Flags().StringSliceVar(&mailSendReferences, "references", nil, "Message-ID chain for threading")
+	mailSendCmd.Flags().StringSliceVar(&mailSendAttachments, "attach", nil, "File path(s) to attach")
+
 	// mail sync flags
 	mailSyncCmd.Flags().StringVarP(&mailSyncMailbox, "mailbox", "m", "INBOX", "Mailbox to sync")
 	mailSyncCmd.Flags().IntVarP(&mailSyncWorkers, "workers", "w", 10, "Number of parallel connections for initial sync")
 	mailSyncCmd.Flags().BoolVar(&mailSyncBodies, "include-bodies", false, "Fetch and cache full RFC822 message bodies for local analysis")
+	mailSyncCmd.Flags().StringVar(&mailSyncSince, "since", "", "Only cache bodies for messages on or after this date (YYYY-MM-DD). Requires --include-bodies")
 
 	// mail search flags
 	mailSearchCmd.Flags().StringVarP(&mailSearchMailbox, "mailbox", "m", "INBOX", "Mailbox to search")
@@ -506,4 +892,9 @@ func init() {
 	mailCmd.AddCommand(mailSearchCmd)
 	mailCmd.AddCommand(mailShowCmd)
 	mailCmd.AddCommand(mailFetchCmd)
+	mailCmd.AddCommand(mailSendCmd)
+	mailCmd.AddCommand(mailDraftCmd)
+	mailCmd.AddCommand(mailDeleteCmd)
+	mailCmd.AddCommand(mailMoveCmd)
+	mailCmd.AddCommand(mailReplyCmd)
 }

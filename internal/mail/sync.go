@@ -14,7 +14,8 @@ import (
 type SyncOptions struct {
 	Workers       int
 	IncludeBodies bool
-	Progress      io.Writer // If set, progress is written here
+	BodiesSince   *time.Time // If set, only cache bodies for messages on or after this date
+	Progress      io.Writer  // If set, progress is written here
 }
 
 // SyncResult contains the result of a sync operation
@@ -157,11 +158,26 @@ func Sync(mailbox string, opts *SyncOptions) (*SyncResult, error) {
 	}
 
 	if opts.IncludeBodies {
+		// If --since is set, get the set of UIDs that match the date filter
+		var sinceUIDs map[uint32]bool
+		if opts.BodiesSince != nil {
+			var err error
+			sinceUIDs, err = cache.GetUIDsSince(mailbox, *opts.BodiesSince)
+			if err != nil {
+				return nil, fmt.Errorf("filtering UIDs by date: %w", err)
+			}
+		}
+
 		var missingBodyUIDs []imap.UID
 		for _, uid := range serverUIDs {
-			if !cachedBodyUIDs[uint32(uid)] {
-				missingBodyUIDs = append(missingBodyUIDs, uid)
+			if cachedBodyUIDs[uint32(uid)] {
+				continue
 			}
+			// If date filter is set, skip UIDs outside the range
+			if sinceUIDs != nil && !sinceUIDs[uint32(uid)] {
+				continue
+			}
+			missingBodyUIDs = append(missingBodyUIDs, uid)
 		}
 
 		bodyCount, err := cache.CountMessageBodies(mailbox)

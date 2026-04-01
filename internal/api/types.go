@@ -678,27 +678,27 @@ type TableCellBlock struct{}
 
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
-	BlockID   string      `json:"block_id,omitempty"`
-	ParentID  string      `json:"parent_id,omitempty"`
-	Children  []string    `json:"children,omitempty"`
-	BlockType int         `json:"block_type"`
-	Page      *TextBlock  `json:"page,omitempty"`
-	Text      *TextBlock  `json:"text,omitempty"`
-	Heading1  *TextBlock  `json:"heading1,omitempty"`
-	Heading2  *TextBlock  `json:"heading2,omitempty"`
-	Heading3  *TextBlock  `json:"heading3,omitempty"`
-	Heading4  *TextBlock  `json:"heading4,omitempty"`
-	Heading5  *TextBlock  `json:"heading5,omitempty"`
-	Heading6  *TextBlock  `json:"heading6,omitempty"`
-	Heading7  *TextBlock  `json:"heading7,omitempty"`
-	Heading8  *TextBlock  `json:"heading8,omitempty"`
-	Heading9  *TextBlock  `json:"heading9,omitempty"`
-	Bullet    *TextBlock  `json:"bullet,omitempty"`
-	Ordered   *TextBlock  `json:"ordered,omitempty"`
-	Code      *TextBlock  `json:"code,omitempty"`
-	Quote     *TextBlock  `json:"quote,omitempty"`
-	TodoBlock *TextBlock  `json:"todo,omitempty"`
-	Divider   *DividerBlock `json:"divider,omitempty"`
+	BlockID   string          `json:"block_id,omitempty"`
+	ParentID  string          `json:"parent_id,omitempty"`
+	Children  []string        `json:"children,omitempty"`
+	BlockType int             `json:"block_type"`
+	Page      *TextBlock      `json:"page,omitempty"`
+	Text      *TextBlock      `json:"text,omitempty"`
+	Heading1  *TextBlock      `json:"heading1,omitempty"`
+	Heading2  *TextBlock      `json:"heading2,omitempty"`
+	Heading3  *TextBlock      `json:"heading3,omitempty"`
+	Heading4  *TextBlock      `json:"heading4,omitempty"`
+	Heading5  *TextBlock      `json:"heading5,omitempty"`
+	Heading6  *TextBlock      `json:"heading6,omitempty"`
+	Heading7  *TextBlock      `json:"heading7,omitempty"`
+	Heading8  *TextBlock      `json:"heading8,omitempty"`
+	Heading9  *TextBlock      `json:"heading9,omitempty"`
+	Bullet    *TextBlock      `json:"bullet,omitempty"`
+	Ordered   *TextBlock      `json:"ordered,omitempty"`
+	Code      *TextBlock      `json:"code,omitempty"`
+	Quote     *TextBlock      `json:"quote,omitempty"`
+	TodoBlock *TextBlock      `json:"todo,omitempty"`
+	Divider   *DividerBlock   `json:"divider,omitempty"`
 	Image     *ImageBlock     `json:"image,omitempty"`
 	Table     *TableBlock     `json:"table,omitempty"`
 	TableCell *TableCellBlock `json:"table_cell,omitempty"`
@@ -1655,6 +1655,117 @@ type OutputSheetData struct {
 	Values           [][]any `json:"values"`
 }
 
+// --- Spreadsheet Data Validation Types ---
+
+// SheetDataValidationOptions represents optional dropdown settings.
+type SheetDataValidationOptions struct {
+	MultipleValues     bool              `json:"multipleValues,omitempty"`
+	HighlightValidData bool              `json:"highlightValidData,omitempty"`
+	ColorValueMap      map[string]string `json:"colorValueMap,omitempty"`
+	Colors             []string          `json:"colors,omitempty"`
+}
+
+// SheetDataValidation represents one dropdown validation definition.
+type SheetDataValidation struct {
+	Ranges             []string                    `json:"ranges,omitempty"`
+	DataValidationID   int                         `json:"dataValidationId,omitempty"`
+	DataValidationType string                      `json:"dataValidationType,omitempty"`
+	ConditionValues    []string                    `json:"conditionValues,omitempty"`
+	Options            *SheetDataValidationOptions `json:"options,omitempty"`
+}
+
+// SheetDataValidationQueryData is the response data from querying dropdown settings.
+type SheetDataValidationQueryData struct {
+	SpreadsheetToken string                `json:"spreadsheetToken,omitempty"`
+	SheetID          string                `json:"sheetId,omitempty"`
+	Revision         int                   `json:"revision,omitempty"`
+	DataValidations  []SheetDataValidation `json:"dataValidations,omitempty"`
+}
+
+// SheetDataValidationQueryResponse is the response from
+// GET /sheets/v2/spreadsheets/:token/dataValidation.
+type SheetDataValidationQueryResponse struct {
+	BaseResponse
+	Data *SheetDataValidationQueryData `json:"data,omitempty"`
+}
+
+// SheetCreateDataValidationPayload is the request payload for creating a validation rule.
+type SheetCreateDataValidationPayload struct {
+	ConditionValues []string                    `json:"conditionValues,omitempty"`
+	Options         *SheetDataValidationOptions `json:"options,omitempty"`
+}
+
+// SheetCreateDataValidationRequest is the request body for
+// POST /sheets/v2/spreadsheets/:token/dataValidation.
+type SheetCreateDataValidationRequest struct {
+	Range              string                           `json:"range"`
+	DataValidationType string                           `json:"dataValidationType"`
+	DataValidation     SheetCreateDataValidationPayload `json:"dataValidation"`
+}
+
+// SheetDeleteDataValidationRange identifies one validation rule to remove.
+type SheetDeleteDataValidationRange struct {
+	SheetID          string `json:"sheetId"`
+	DataValidationID int    `json:"dataValidationId"`
+	Range            string `json:"range"`
+}
+
+// SheetDeleteDataValidationRequest is the request body for
+// DELETE /sheets/v2/spreadsheets/:token/dataValidation.
+type SheetDeleteDataValidationRequest struct {
+	DataValidationRanges []SheetDeleteDataValidationRange `json:"dataValidationRanges"`
+}
+
+// SheetDeleteDataValidationRangeResult is one delete result entry.
+type SheetDeleteDataValidationRangeResult struct {
+	Msg          string `json:"msg,omitempty"`
+	Range        string `json:"range,omitempty"`
+	Success      bool   `json:"success,omitempty"`
+	UpdatedCells int    `json:"updatedCells,omitempty"`
+}
+
+// SheetDeleteDataValidationData is the response data from deleting validation rules.
+type SheetDeleteDataValidationData struct {
+	RangeResults []SheetDeleteDataValidationRangeResult `json:"rangeResults,omitempty"`
+}
+
+// SheetDeleteDataValidationResponse is the response from
+// DELETE /sheets/v2/spreadsheets/:token/dataValidation.
+type SheetDeleteDataValidationResponse struct {
+	BaseResponse
+	Data *SheetDeleteDataValidationData `json:"data,omitempty"`
+}
+
+// OutputSheetValidation is the CLI response for dropdown validation queries.
+type OutputSheetValidation struct {
+	SpreadsheetToken   string                `json:"spreadsheet_token"`
+	SheetID            string                `json:"sheet_id"`
+	Range              string                `json:"range"`
+	DataValidationType string                `json:"data_validation_type"`
+	Revision           int                   `json:"revision"`
+	DataValidations    []SheetDataValidation `json:"data_validations"`
+	Count              int                   `json:"count"`
+}
+
+// OutputSheetValidationSet is the CLI response for creating a validation rule.
+type OutputSheetValidationSet struct {
+	Success          bool                  `json:"success"`
+	SpreadsheetToken string                `json:"spreadsheet_token"`
+	SheetID          string                `json:"sheet_id"`
+	Range            string                `json:"range"`
+	DataValidation   *SheetDataValidation  `json:"data_validation,omitempty"`
+	DataValidations  []SheetDataValidation `json:"data_validations,omitempty"`
+}
+
+// OutputSheetValidationClear is the CLI response for deleting validation rules.
+type OutputSheetValidationClear struct {
+	Success          bool                                   `json:"success"`
+	SpreadsheetToken string                                 `json:"spreadsheet_token"`
+	SheetID          string                                 `json:"sheet_id"`
+	Range            string                                 `json:"range"`
+	Results          []SheetDeleteDataValidationRangeResult `json:"results,omitempty"`
+}
+
 // --- Spreadsheet Write Types ---
 
 // SetSheetValuesRequest is the request body for PUT /sheets/v2/spreadsheets/:token/values
@@ -1831,6 +1942,8 @@ type SheetStyleFont struct {
 type SheetStyle struct {
 	Font      *SheetStyleFont `json:"font,omitempty"`
 	Formatter string          `json:"formatter,omitempty"`
+	WordWrap  *int            `json:"wordWrap,omitempty"`
+	Clean     *bool           `json:"clean,omitempty"`
 }
 
 type SheetStyleItem struct {
@@ -1842,12 +1955,38 @@ type SheetStyleBatchUpdateRequest struct {
 	Data []SheetStyleItem `json:"data"`
 }
 
+type SheetAppendStyleRequest struct {
+	AppendStyle SheetAppendStylePayload `json:"appendStyle"`
+}
+
+type SheetAppendStylePayload struct {
+	Range string     `json:"range"`
+	Style SheetStyle `json:"style"`
+}
+
+type SheetStyleUpdateData struct {
+	SpreadsheetToken string `json:"spreadsheetToken,omitempty"`
+	UpdatedRange     string `json:"updatedRange,omitempty"`
+	UpdatedRows      int    `json:"updatedRows,omitempty"`
+	UpdatedColumns   int    `json:"updatedColumns,omitempty"`
+	UpdatedCells     int    `json:"updatedCells,omitempty"`
+	Revision         int    `json:"revision,omitempty"`
+}
+
 type SheetStyleBatchUpdateResponse struct {
 	BaseResponse
+	Data struct {
+		Updates *SheetStyleUpdateData `json:"updates,omitempty"`
+	} `json:"data,omitempty"`
 }
 
 type OutputSheetStyle struct {
-	Success bool `json:"success"`
+	Success        bool   `json:"success"`
+	UpdatedRange   string `json:"updated_range,omitempty"`
+	UpdatedRows    int    `json:"updated_rows,omitempty"`
+	UpdatedColumns int    `json:"updated_columns,omitempty"`
+	UpdatedCells   int    `json:"updated_cells,omitempty"`
+	Revision       int    `json:"revision,omitempty"`
 }
 
 // --- Sheet Dimension (Resize) Types ---
@@ -1864,8 +2003,8 @@ type SheetDimensionProperties struct {
 }
 
 type SheetDimensionRangeRequest struct {
-	Dimension            SheetDimension           `json:"dimension"`
-	DimensionProperties  SheetDimensionProperties `json:"dimensionProperties"`
+	Dimension           SheetDimension           `json:"dimension"`
+	DimensionProperties SheetDimensionProperties `json:"dimensionProperties"`
 }
 
 type SheetDimensionRangeResponse struct {

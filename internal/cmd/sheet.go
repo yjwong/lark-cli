@@ -7,10 +7,12 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yjwong/lark-cli/internal/api"
+	"github.com/yjwong/lark-cli/internal/browser"
 	"github.com/yjwong/lark-cli/internal/output"
 )
 
@@ -43,6 +45,16 @@ var sheetCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		validateScopeGroup("documents")
 	},
+}
+
+var singleCellRangeRe = regexp.MustCompile(`^[A-Za-z]+[0-9]+$`)
+
+func normalizeStyleRange(rangeSpec string) string {
+	rangeSpec = strings.TrimSpace(rangeSpec)
+	if singleCellRangeRe.MatchString(rangeSpec) {
+		return rangeSpec + ":" + rangeSpec
+	}
+	return rangeSpec
 }
 
 // --- sheet list ---
@@ -199,6 +211,252 @@ Examples:
 
 		output.JSON(result)
 	},
+}
+
+// --- sheet validation ---
+
+var sheetValidationCmd = &cobra.Command{
+	Use:   "validation <spreadsheet_token>",
+	Short: "Query dropdown validation settings from a sheet range",
+	Long: `Query dropdown validation settings from a range in a Lark spreadsheet.
+
+By default, queries dropdown ("list") validations from the first sheet. Use --sheet
+to specify a sheet ID and --range to narrow the query range.
+
+Examples:
+  lark sheet validation T4mHsrFyzhXrj0tVzRslUGx8gkA
+  lark sheet validation T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --range M:N
+  lark sheet validation T4mHsrFyzhXrj0tVzRslUGx8gkA --range A1:B100 --type list`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		sheetID, _ := cmd.Flags().GetString("sheet")
+		rangeSpec, _ := cmd.Flags().GetString("range")
+		dataValidationType, _ := cmd.Flags().GetString("type")
+
+		client := api.NewClient()
+
+		sheetID = resolveSheetID(client, token, sheetID)
+
+		fullRange := sheetID
+		if rangeSpec != "" {
+			fullRange = sheetID + "!" + rangeSpec
+		}
+
+		data, err := client.GetSheetDataValidation(token, fullRange, dataValidationType)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputSheetValidation{
+			SpreadsheetToken:   token,
+			SheetID:            sheetID,
+			Range:              fullRange,
+			DataValidationType: dataValidationType,
+		}
+		if result.DataValidationType == "" {
+			result.DataValidationType = "list"
+		}
+		if data != nil {
+			result.SpreadsheetToken = data.SpreadsheetToken
+			result.SheetID = data.SheetID
+			result.Revision = data.Revision
+			result.DataValidations = data.DataValidations
+			result.Count = len(data.DataValidations)
+		}
+
+		output.JSON(result)
+	},
+}
+
+var sheetSetValidationCmd = &cobra.Command{
+	Use:   "set-validation <spreadsheet_token>",
+	Short: "Create a dropdown validation rule for a sheet range",
+	Long: `Create a dropdown validation rule for a range in a Lark spreadsheet.
+
+Provide dropdown items with --values as a JSON array or a comma-separated list.
+Optionally provide one color per item with --colors.
+
+Examples:
+  lark sheet set-validation T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --range L2:L200 --values '["Migrate","Deprecate"]'
+  lark sheet set-validation T4mHsrFyzhXrj0tVzRslUGx8gkA --range M2:M200 --values 'Y,N' --colors '#bacefd,#fed4a4'`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		sheetID, _ := cmd.Flags().GetString("sheet")
+		rangeSpec, _ := cmd.Flags().GetString("range")
+		valuesArg, _ := cmd.Flags().GetString("values")
+		colorsArg, _ := cmd.Flags().GetString("colors")
+		multiple, _ := cmd.Flags().GetBool("multiple")
+		noHighlight, _ := cmd.Flags().GetBool("no-highlight")
+
+		if rangeSpec == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--range is required"))
+		}
+		if valuesArg == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--values is required"))
+		}
+
+		values, err := parseStringListArg(valuesArg)
+		if err != nil {
+			output.Fatal("PARSE_ERROR", fmt.Errorf("invalid --values: %w", err))
+		}
+		if len(values) == 0 {
+			output.Fatal("INVALID_ARG", fmt.Errorf("--values must contain at least one dropdown item"))
+		}
+
+		var colors []string
+		if colorsArg != "" {
+			colors, err = parseStringListArg(colorsArg)
+			if err != nil {
+				output.Fatal("PARSE_ERROR", fmt.Errorf("invalid --colors: %w", err))
+			}
+			if len(colors) != len(values) {
+				output.Fatal("INVALID_ARG", fmt.Errorf("--colors must have the same number of items as --values"))
+			}
+		}
+
+		client := api.NewClient()
+		sheetID = resolveSheetID(client, token, sheetID)
+		fullRange := sheetID + "!" + rangeSpec
+
+		options := &api.SheetDataValidationOptions{
+			MultipleValues:     multiple,
+			HighlightValidData: !noHighlight,
+		}
+		if len(colors) > 0 {
+			options.Colors = colors
+		}
+
+		if err := client.CreateSheetDataValidation(token, fullRange, values, options); err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		data, err := client.GetSheetDataValidation(token, fullRange, "list")
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputSheetValidationSet{
+			Success:          true,
+			SpreadsheetToken: token,
+			SheetID:          sheetID,
+			Range:            fullRange,
+		}
+		if data != nil {
+			result.SpreadsheetToken = data.SpreadsheetToken
+			result.SheetID = data.SheetID
+			result.DataValidations = data.DataValidations
+			for _, validation := range data.DataValidations {
+				for _, validationRange := range validation.Ranges {
+					if validationRange == fullRange {
+						v := validation
+						result.DataValidation = &v
+						break
+					}
+				}
+				if result.DataValidation != nil {
+					break
+				}
+			}
+		}
+
+		output.JSON(result)
+	},
+}
+
+var sheetClearValidationCmd = &cobra.Command{
+	Use:   "clear-validation <spreadsheet_token>",
+	Short: "Delete dropdown validation rules from a sheet range",
+	Long: `Delete dropdown validation rules that overlap a range in a Lark spreadsheet.
+
+Examples:
+  lark sheet clear-validation T4mHsrFyzhXrj0tVzRslUGx8gkA --sheet abc123 --range L2:L200`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		token := args[0]
+		sheetID, _ := cmd.Flags().GetString("sheet")
+		rangeSpec, _ := cmd.Flags().GetString("range")
+
+		if rangeSpec == "" {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--range is required"))
+		}
+
+		client := api.NewClient()
+		sheetID = resolveSheetID(client, token, sheetID)
+		fullRange := sheetID + "!" + rangeSpec
+
+		data, err := client.GetSheetDataValidation(token, fullRange, "list")
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		if data == nil || len(data.DataValidations) == 0 {
+			output.JSON(api.OutputSheetValidationClear{
+				Success:          true,
+				SpreadsheetToken: token,
+				SheetID:          sheetID,
+				Range:            fullRange,
+			})
+			return
+		}
+
+		deleteRanges := make([]api.SheetDeleteDataValidationRange, 0, len(data.DataValidations))
+		for _, validation := range data.DataValidations {
+			for _, validationRange := range validation.Ranges {
+				deleteRanges = append(deleteRanges, api.SheetDeleteDataValidationRange{
+					SheetID:          sheetID,
+					DataValidationID: validation.DataValidationID,
+					Range:            validationRange,
+				})
+			}
+		}
+
+		deleteData, err := client.DeleteSheetDataValidation(token, deleteRanges)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputSheetValidationClear{
+			Success:          true,
+			SpreadsheetToken: token,
+			SheetID:          sheetID,
+			Range:            fullRange,
+		}
+		if deleteData != nil {
+			result.Results = deleteData.RangeResults
+		}
+		output.JSON(result)
+	},
+}
+
+func parseStringListArg(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	if strings.HasPrefix(raw, "[") {
+		var values []string
+		if err := json.Unmarshal([]byte(raw), &values); err != nil {
+			return nil, err
+		}
+		return trimNonEmpty(values), nil
+	}
+
+	parts := strings.Split(raw, ",")
+	return trimNonEmpty(parts), nil
+}
+
+func trimNonEmpty(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // columnIndexToLetter converts a 1-based column index to a letter (1=A, 26=Z)
@@ -413,12 +671,18 @@ Examples:
 		rangeSpec, _ := cmd.Flags().GetString("range")
 		bold, _ := cmd.Flags().GetBool("bold")
 		format, _ := cmd.Flags().GetString("format")
+		wrap, _ := cmd.Flags().GetBool("wrap")
+		noWrap, _ := cmd.Flags().GetBool("no-wrap")
 
 		if rangeSpec == "" {
 			output.Fatal("MISSING_ARG", fmt.Errorf("--range is required"))
 		}
-		if !bold && format == "" {
-			output.Fatal("MISSING_ARG", fmt.Errorf("at least one style flag is required (e.g. --bold, --format)"))
+		rangeSpec = normalizeStyleRange(rangeSpec)
+		if wrap && noWrap {
+			output.Fatal("INVALID_ARG", fmt.Errorf("--wrap and --no-wrap are mutually exclusive"))
+		}
+		if !bold && format == "" && !wrap && !noWrap {
+			output.Fatal("MISSING_ARG", fmt.Errorf("at least one style flag is required (e.g. --bold, --format, --wrap, --no-wrap)"))
 		}
 
 		client := api.NewClient()
@@ -426,18 +690,47 @@ Examples:
 		sheetID = resolveSheetID(client, token, sheetID)
 
 		style := api.SheetStyle{}
+		applyViaAPI := false
 		if bold {
 			style.Font = &api.SheetStyleFont{Bold: true}
+			applyViaAPI = true
 		}
 		if format != "" {
 			style.Formatter = format
+			applyViaAPI = true
+		}
+		if noWrap {
+			cleanValue := true
+			style.Clean = &cleanValue
+			applyViaAPI = true
 		}
 
-		if err := client.SetSheetStyle(token, sheetID, rangeSpec, style); err != nil {
-			output.Fatal("API_ERROR", err)
+		var data *api.SheetStyleUpdateData
+		if applyViaAPI {
+			var err error
+			data, err = client.SetSheetStyle(token, sheetID, rangeSpec, style)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+		}
+		if wrap {
+			if err := browser.WrapSheetRange(token, rangeSpec); err != nil {
+				output.Fatal("BROWSER_ERROR", fmt.Errorf("failed to persist wrapped text via browser fallback: %w", err))
+			}
 		}
 
-		output.JSON(api.OutputSheetStyle{Success: true})
+		result := api.OutputSheetStyle{Success: true}
+		if wrap && data == nil {
+			result.UpdatedRange = sheetID + "!" + rangeSpec
+		}
+		if data != nil {
+			result.UpdatedRange = data.UpdatedRange
+			result.UpdatedRows = data.UpdatedRows
+			result.UpdatedColumns = data.UpdatedColumns
+			result.UpdatedCells = data.UpdatedCells
+			result.Revision = data.Revision
+		}
+		output.JSON(result)
 	},
 }
 
@@ -473,7 +766,7 @@ Examples:
 				output.Fatal("PARSE_ERROR", fmt.Errorf("invalid widths JSON: %w", err))
 			}
 			for k, v := range raw {
-				
+
 				idx, err := strconv.Atoi(k)
 				if err != nil {
 					output.Fatal("PARSE_ERROR", fmt.Errorf("invalid column index %q in --widths: must be a number", k))
@@ -580,10 +873,10 @@ Examples:
 		}
 
 		result := struct {
-			FileToken      string `json:"file_token"`
-			Filename       string `json:"filename"`
-			ContentType    string `json:"content_type"`
-			Size           int64  `json:"size"`
+			FileToken   string `json:"file_token"`
+			Filename    string `json:"filename"`
+			ContentType string `json:"content_type"`
+			Size        int64  `json:"size"`
 		}{
 			FileToken:   fileToken,
 			Filename:    outputPath,
@@ -598,6 +891,9 @@ func init() {
 	// Register subcommands
 	sheetCmd.AddCommand(sheetListCmd)
 	sheetCmd.AddCommand(sheetReadCmd)
+	sheetCmd.AddCommand(sheetValidationCmd)
+	sheetCmd.AddCommand(sheetSetValidationCmd)
+	sheetCmd.AddCommand(sheetClearValidationCmd)
 	sheetCmd.AddCommand(sheetWriteCmd)
 	sheetCmd.AddCommand(sheetCreateCmd)
 	sheetCmd.AddCommand(sheetStyleCmd)
@@ -609,6 +905,23 @@ func init() {
 	sheetReadCmd.Flags().String("sheet", "", "Sheet ID to read from (default: first sheet)")
 	sheetReadCmd.Flags().String("range", "", "Cell range to read (e.g., A1:Z100)")
 	sheetReadCmd.Flags().String("render", "value", "How to render cell values: value (computed, default), formula (raw =formula), formatted (display string)")
+
+	// Flags for sheet validation
+	sheetValidationCmd.Flags().String("sheet", "", "Sheet ID to query from (default: first sheet)")
+	sheetValidationCmd.Flags().String("range", "", "Cell range to query (e.g., M:N or A1:B100)")
+	sheetValidationCmd.Flags().String("type", "list", "Validation type to query (currently only: list)")
+
+	// Flags for sheet set-validation
+	sheetSetValidationCmd.Flags().String("sheet", "", "Sheet ID to write to (default: first sheet)")
+	sheetSetValidationCmd.Flags().String("range", "", "Cell range to apply validation to (e.g., L2:L200)")
+	sheetSetValidationCmd.Flags().String("values", "", `Dropdown items as JSON array or comma-separated string, e.g. '["A","B"]' or 'A,B'`)
+	sheetSetValidationCmd.Flags().String("colors", "", `Optional colors as JSON array or comma-separated string, e.g. '["#bacefd","#fed4a4"]'`)
+	sheetSetValidationCmd.Flags().Bool("multiple", false, "Allow selecting multiple dropdown values")
+	sheetSetValidationCmd.Flags().Bool("no-highlight", false, "Disable colored dropdown highlighting")
+
+	// Flags for sheet clear-validation
+	sheetClearValidationCmd.Flags().String("sheet", "", "Sheet ID to clear from (default: first sheet)")
+	sheetClearValidationCmd.Flags().String("range", "", "Cell range to clear validation from (e.g., L2:L200)")
 
 	// Flags for sheet write
 	sheetWriteCmd.Flags().String("sheet", "", "Sheet ID to write to (default: first sheet)")
@@ -625,6 +938,8 @@ func init() {
 	sheetStyleCmd.Flags().String("range", "", "Cell range in A1 notation (e.g., A1:Q1) - required")
 	sheetStyleCmd.Flags().Bool("bold", false, "Apply bold formatting")
 	sheetStyleCmd.Flags().String("format", "", `Number/date format string (e.g., "yyyy-MM-dd", "#,##0", "0.00%")`)
+	sheetStyleCmd.Flags().Bool("wrap", false, "Enable text wrapping for the range")
+	sheetStyleCmd.Flags().Bool("no-wrap", false, "Disable text wrapping for the range")
 
 	// Flags for sheet resize
 	sheetResizeCmd.Flags().String("sheet", "", "Sheet ID (default: first sheet)")

@@ -187,6 +187,13 @@ func convertMessage(m api.Message) api.OutputMessage {
 
 	if m.Body != nil {
 		out.Content = m.Body.Content
+		// Replace @_user_N placeholders with @{open_id} format so output is
+		// directly usable in msg send without manual ID lookup.
+		for _, mention := range m.Mentions {
+			if mention.Key != "" && mention.ID != "" {
+				out.Content = strings.ReplaceAll(out.Content, mention.Key, "@{"+mention.ID+"}")
+			}
+		}
 	}
 
 	if m.Sender != nil {

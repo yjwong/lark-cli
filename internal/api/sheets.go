@@ -67,6 +67,74 @@ func (c *Client) GetSheetData(token, rangeStr, renderOption string) (*SheetValue
 	return resp.Data, nil
 }
 
+// GetSheetDataValidation retrieves dropdown validation settings for a range.
+// token: the spreadsheet token
+// rangeStr: range in format "sheetId!A1:B10", "sheetId!M:N", or just "sheetId"
+// dataValidationType: currently only "list" is supported by the API
+func (c *Client) GetSheetDataValidation(token, rangeStr, dataValidationType string) (*SheetDataValidationQueryData, error) {
+	if dataValidationType == "" {
+		dataValidationType = "list"
+	}
+	path := fmt.Sprintf(
+		"/sheets/v2/spreadsheets/%s/dataValidation?range=%s&dataValidationType=%s",
+		url.PathEscape(token),
+		url.QueryEscape(rangeStr),
+		url.QueryEscape(dataValidationType),
+	)
+
+	var resp SheetDataValidationQueryResponse
+	if err := c.Get(path, &resp); err != nil {
+		return nil, err
+	}
+
+	if err := resp.Err(); err != nil {
+		return nil, err
+	}
+
+	return resp.Data, nil
+}
+
+// CreateSheetDataValidation creates a dropdown validation rule for a range.
+func (c *Client) CreateSheetDataValidation(token, rangeStr string, conditionValues []string, options *SheetDataValidationOptions) error {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/dataValidation", url.PathEscape(token))
+
+	req := SheetCreateDataValidationRequest{
+		Range:              rangeStr,
+		DataValidationType: "list",
+		DataValidation: SheetCreateDataValidationPayload{
+			ConditionValues: conditionValues,
+			Options:         options,
+		},
+	}
+
+	var resp BaseResponse
+	if err := c.Post(path, req, &resp); err != nil {
+		return err
+	}
+
+	return resp.Err()
+}
+
+// DeleteSheetDataValidation deletes one or more dropdown validation rules.
+func (c *Client) DeleteSheetDataValidation(token string, ranges []SheetDeleteDataValidationRange) (*SheetDeleteDataValidationData, error) {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/dataValidation", url.PathEscape(token))
+
+	req := SheetDeleteDataValidationRequest{
+		DataValidationRanges: ranges,
+	}
+
+	var resp SheetDeleteDataValidationResponse
+	if err := c.DeleteWithBody(path, req, &resp); err != nil {
+		return nil, err
+	}
+
+	if err := resp.Err(); err != nil {
+		return nil, err
+	}
+
+	return resp.Data, nil
+}
+
 // SetSheetData writes cell values to a sheet
 // token: the spreadsheet token
 // sheetRange: the range in format "sheetId!A1:C3"
@@ -122,48 +190,31 @@ func (c *Client) SetSheetColumnWidths(token, sheetID string, widths map[int]int)
 
 // SetSheetStyleBold applies bold formatting to a range in a sheet.
 func (c *Client) SetSheetStyleBold(token, sheetID, rangeSpec string) error {
-	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/styles_batch_update", url.PathEscape(token))
-
-	fullRange := sheetID + "!" + rangeSpec
-	req := SheetStyleBatchUpdateRequest{
-		Data: []SheetStyleItem{
-			{
-				Ranges: []string{fullRange},
-				Style:  SheetStyle{Font: &SheetStyleFont{Bold: true}},
-			},
-		},
-	}
-
-	var resp SheetStyleBatchUpdateResponse
-	if err := c.Put(path, req, &resp); err != nil {
-		return err
-	}
-	if err := resp.Err(); err != nil {
-		return err
-	}
-	return nil
+	_, err := c.SetSheetStyle(token, sheetID, rangeSpec, SheetStyle{
+		Font: &SheetStyleFont{Bold: true},
+	})
+	return err
 }
 
 // SetSheetStyle applies a style to a range of cells
-func (c *Client) SetSheetStyle(token, sheetID, rangeSpec string, style SheetStyle) error {
-	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/styles_batch_update", url.PathEscape(token))
+func (c *Client) SetSheetStyle(token, sheetID, rangeSpec string, style SheetStyle) (*SheetStyleUpdateData, error) {
+	path := fmt.Sprintf("/sheets/v2/spreadsheets/%s/style", url.PathEscape(token))
 	fullRange := sheetID + "!" + rangeSpec
-	req := SheetStyleBatchUpdateRequest{
-		Data: []SheetStyleItem{
-			{
-				Ranges: []string{fullRange},
-				Style:  style,
-			},
+	req := SheetAppendStyleRequest{
+		AppendStyle: SheetAppendStylePayload{
+			Range: fullRange,
+			Style: style,
 		},
 	}
+
 	var resp SheetStyleBatchUpdateResponse
 	if err := c.Put(path, req, &resp); err != nil {
-		return err
+		return nil, err
 	}
 	if err := resp.Err(); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return resp.Data.Updates, nil
 }
 
 // AddSheetTab adds a new sheet tab to a spreadsheet.

@@ -3,6 +3,8 @@ package mail
 import (
 	"crypto/tls"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -283,6 +285,117 @@ func (c *Client) FetchMessage(uid imap.UID) ([]byte, *Envelope, error) {
 	}
 
 	return body, envelope, nil
+}
+
+// AppendDraft saves a message to the specified mailbox with the \Draft flag
+func (c *Client) AppendDraft(mailbox string, msg []byte) (imap.UID, error) {
+	options := &imap.AppendOptions{
+		Flags: []imap.Flag{imap.FlagDraft, imap.FlagSeen},
+		Time:  time.Now(),
+	}
+
+	appendCmd := c.imap.Append(mailbox, int64(len(msg)), options)
+	if _, err := appendCmd.Write(msg); err != nil {
+		return 0, fmt.Errorf("writing message to %s: %w", mailbox, err)
+	}
+	if err := appendCmd.Close(); err != nil {
+		return 0, fmt.Errorf("closing append to %s: %w", mailbox, err)
+	}
+
+	data, err := appendCmd.Wait()
+	if err != nil {
+		return 0, fmt.Errorf("APPEND to %s failed: %w", mailbox, err)
+	}
+
+	return data.UID, nil
+}
+
+// DeleteMessage flags a message as \Deleted and expunges it
+func (c *Client) DeleteMessage(uid imap.UID) error {
+	uidSet := imap.UIDSetNum(uid)
+
+	storeFlags := &imap.StoreFlags{
+		Op:    imap.StoreFlagsAdd,
+		Flags: []imap.Flag{imap.FlagDeleted},
+	}
+	if err := c.imap.Store(uidSet, storeFlags, nil).Close(); err != nil {
+		return fmt.Errorf("flagging message %d as deleted: %w", uid, err)
+	}
+
+	expungeCmd := c.imap.UIDExpunge(uidSet)
+	for expungeCmd.Next() != 0 {
+		// drain
+	}
+	if err := expungeCmd.Close(); err != nil {
+		return fmt.Errorf("expunging message %d: %w", uid, err)
+	}
+
+	return nil
+}
+
+// MoveMessage moves a message to another mailbox
+func (c *Client) MoveMessage(uid imap.UID, destMailbox string) error {
+	uidSet := imap.UIDSetNum(uid)
+
+	_, err := c.imap.Move(uidSet, destMailbox).Wait()
+	if err != nil {
+		return fmt.Errorf("moving message %d to %s: %w", uid, destMailbox, err)
+	}
+
+	return nil
+}
+
+// FetchThreadingInfo fetches the Message-ID, References, and In-Reply-To headers for a message
+func (c *Client) FetchThreadingInfo(uid imap.UID) (messageID string, references []string, subject string, from string, err error) {
+	uidSet := imap.UIDSetNum(uid)
+
+	fetchOptions := &imap.FetchOptions{
+		Envelope: true,
+		UID:      true,
+		BodySection: []*imap.FetchItemBodySection{
+			{Specifier: imap.PartSpecifierHeader, HeaderFields: []string{"References", "In-Reply-To"}},
+		},
+	}
+
+	messages, err := c.imap.Fetch(uidSet, fetchOptions).Collect()
+	if err != nil {
+		return "", nil, "", "", fmt.Errorf("fetching message: %w", err)
+	}
+
+	if len(messages) == 0 {
+		return "", nil, "", "", fmt.Errorf("message not found: UID %d", uid)
+	}
+
+	msg := messages[0]
+
+	if msg.Envelope != nil {
+		messageID = msg.Envelope.MessageID
+		subject = msg.Envelope.Subject
+		if len(msg.Envelope.From) > 0 {
+			from = msg.Envelope.From[0].Addr()
+		}
+	}
+
+	// Parse References from header section
+	for _, data := range msg.BodySection {
+		headerStr := string(data)
+		for _, line := range strings.Split(headerStr, "\r\n") {
+			trimmed := strings.TrimSpace(line)
+			lower := strings.ToLower(trimmed)
+			if strings.HasPrefix(lower, "references:") {
+				refStr := strings.TrimSpace(trimmed[len("references:"):])
+				// Split on whitespace to get individual message IDs
+				for _, ref := range strings.Fields(refStr) {
+					if strings.HasPrefix(ref, "<") {
+						references = append(references, ref)
+					}
+				}
+			}
+		}
+		break
+	}
+
+	return messageID, references, subject, from, nil
 }
 
 // TestConnection attempts to connect and list mailboxes
