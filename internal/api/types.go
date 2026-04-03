@@ -905,6 +905,8 @@ type DocumentBlock struct {
 	AddOns         *AddOnsBlock         `json:"add_ons,omitempty"`
 	JiraIssue      *JiraIssueBlock      `json:"jira_issue,omitempty"`
 	WikiCatalog    *WikiCatalogBlock    `json:"wiki_catalog,omitempty"`
+	OKRObjective   *TextBlock           `json:"okr_objective,omitempty"`
+	OKRKeyResult   *TextBlock           `json:"okr_key_result,omitempty"`
 }
 
 // --- Document API Response Types ---
@@ -1680,6 +1682,17 @@ type SheetMetadataResponse struct {
 type SheetValuesResponse struct {
 	BaseResponse
 	Data *SheetValues `json:"data,omitempty"`
+}
+
+// SheetBatchValuesResponse is the response from GET /sheets/v2/spreadsheets/:token/values_batch_get
+type SheetBatchValuesResponse struct {
+	BaseResponse
+	Data struct {
+		Revision         int          `json:"revision,omitempty"`
+		SpreadsheetToken string       `json:"spreadsheetToken,omitempty"`
+		TotalCells       int          `json:"totalCells,omitempty"`
+		ValueRanges      []ValueRange `json:"valueRanges,omitempty"`
+	} `json:"data,omitempty"`
 }
 
 // --- Spreadsheet CLI Output Types ---

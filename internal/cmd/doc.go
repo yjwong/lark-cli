@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +75,11 @@ Examples:
 			// Resolve task details (best-effort)
 			if taskIDs := docrender.ExtractTaskIDs(blocks); len(taskIDs) > 0 {
 				opts.TaskDetails = resolveTaskDetails(client, taskIDs)
+			}
+
+			// Resolve embedded sheet blocks to inline data
+			if sheetTokens := docrender.ExtractSheetTokens(blocks); len(sheetTokens) > 0 {
+				opts.SheetData = resolveSheetData(client, sheetTokens)
 			}
 
 			content = docrender.RenderBlocksWithOptions(blocks, opts)
@@ -442,6 +448,127 @@ func resolveTaskDetails(client *api.Client, taskIDs []string) map[string]docrend
 		return nil
 	}
 	return details
+}
+
+// resolveSheetData fetches cell data for embedded sheet blocks.
+// Token format: "SpreadsheetToken_SheetID" — split on underscore.
+// Falls back silently on errors (renderer shows token as fallback).
+func resolveSheetData(client *api.Client, tokens []string) map[string][][]any {
+	data := make(map[string][][]any, len(tokens))
+	maxRows := docrender.MaxInlineSheetRows
+
+	// Group tokens by spreadsheet for batch fetching
+	type sheetInfo struct {
+		fullToken string // original "SpreadsheetToken_SheetID"
+		sheetID   string
+		fullRange string
+	}
+	groups := make(map[string][]sheetInfo) // spreadsheetToken -> []sheetInfo
+
+	for _, token := range tokens {
+		spreadsheetToken, sheetID, ok := parseSheetToken(token)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "warning: invalid sheet token format: %s\n", token)
+			continue
+		}
+
+		// Build bounded range using sheet metadata
+		var fullRange string
+		sheet, err := client.GetSheetMetadata(spreadsheetToken, sheetID)
+		if err != nil {
+			fullRange = fmt.Sprintf("%s!A1:Z%d", sheetID, maxRows)
+		} else if sheet.GridProperties != nil {
+			rowCount := sheet.GridProperties.RowCount
+			colCount := sheet.GridProperties.ColumnCount
+			if rowCount > maxRows {
+				rowCount = maxRows
+			}
+			if colCount > 26 {
+				colCount = 26
+			}
+			endCol := columnIndexToLetter(colCount)
+			fullRange = fmt.Sprintf("%s!A1:%s%d", sheetID, endCol, rowCount)
+		} else {
+			fullRange = fmt.Sprintf("%s!A1:Z%d", sheetID, maxRows)
+		}
+
+		groups[spreadsheetToken] = append(groups[spreadsheetToken], sheetInfo{
+			fullToken: token,
+			sheetID:   sheetID,
+			fullRange: fullRange,
+		})
+	}
+
+	// Batch-fetch all ranges per spreadsheet
+	for spreadsheetToken, sheets := range groups {
+		ranges := make([]string, len(sheets))
+		for i, s := range sheets {
+			ranges[i] = s.fullRange
+		}
+
+		valueRanges, err := client.BatchGetSheetDataAsText(spreadsheetToken, ranges)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not batch-fetch sheet data for %s: %v\n", spreadsheetToken, err)
+			// Fall back to individual fetches
+			for _, s := range sheets {
+				sheetValues, err := client.GetSheetDataAsText(spreadsheetToken, s.fullRange)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: could not fetch sheet data for %s: %v\n", s.fullToken, err)
+					continue
+				}
+				if sheetValues != nil && sheetValues.ValueRange != nil {
+					data[s.fullToken] = sheetValues.ValueRange.Values
+				} else {
+					data[s.fullToken] = [][]any{} // resolved but empty
+				}
+			}
+			continue
+		}
+
+		// Map results back to full tokens by matching sheet ID in range
+		rangeBySheet := mapBatchResults(valueRanges)
+		for _, s := range sheets {
+			if values, ok := rangeBySheet[s.sheetID]; ok {
+				data[s.fullToken] = values
+			} else {
+				// Batch API may omit some ranges; fall back to individual fetch
+				sheetValues, err := client.GetSheetDataAsText(spreadsheetToken, s.fullRange)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: could not fetch sheet data for %s: %v\n", s.fullToken, err)
+					continue
+				}
+				if sheetValues != nil && sheetValues.ValueRange != nil {
+					data[s.fullToken] = sheetValues.ValueRange.Values
+				} else {
+					data[s.fullToken] = [][]any{} // resolved but empty
+				}
+			}
+		}
+	}
+
+	return data
+}
+
+// parseSheetToken splits a composite sheet block token into spreadsheet token and sheet ID.
+// Token format: "SpreadsheetToken_SheetID"
+func parseSheetToken(token string) (spreadsheetToken, sheetID string, ok bool) {
+	parts := strings.SplitN(token, "_", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+// mapBatchResults maps batch API valueRanges back to sheet IDs.
+// The batch API may skip ranges, so results are matched by sheet ID prefix in the range field.
+func mapBatchResults(valueRanges []api.ValueRange) map[string][][]any {
+	result := make(map[string][][]any)
+	for _, vr := range valueRanges {
+		if idx := strings.Index(vr.Range, "!"); idx > 0 {
+			result[vr.Range[:idx]] = vr.Values
+		}
+	}
+	return result
 }
 
 // formatUnixTimestamp converts a unix timestamp to RFC3339 format

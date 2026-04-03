@@ -26,6 +26,9 @@ type RenderOptions struct {
 	// TaskDetails maps task GUIDs to resolved task info.
 	// If nil or a task GUID is missing, falls back to [task: UUID].
 	TaskDetails map[string]TaskInfo
+	// SheetData maps embedded sheet block tokens to their cell values.
+	// If nil or a token is missing, falls back to [sheet: token].
+	SheetData map[string][][]any
 }
 
 // blockNode wraps a DocumentBlock with resolved children for tree traversal
@@ -105,12 +108,26 @@ func ExtractTaskIDs(blocks []api.DocumentBlock) []string {
 	return ids
 }
 
+// ExtractSheetTokens collects all unique embedded sheet tokens from a block list
+func ExtractSheetTokens(blocks []api.DocumentBlock) []string {
+	seen := make(map[string]bool)
+	var tokens []string
+	for _, b := range blocks {
+		if b.BlockType == 30 && b.Sheet != nil && b.Sheet.Token != "" && !seen[b.Sheet.Token] {
+			seen[b.Sheet.Token] = true
+			tokens = append(tokens, b.Sheet.Token)
+		}
+	}
+	return tokens
+}
+
 // allTextBlocks returns all TextBlock pointers from a DocumentBlock
 func allTextBlocks(b *api.DocumentBlock) []*api.TextBlock {
 	candidates := []*api.TextBlock{
 		b.Page, b.Text, b.Heading1, b.Heading2, b.Heading3,
 		b.Heading4, b.Heading5, b.Heading6, b.Heading7, b.Heading8, b.Heading9,
 		b.Bullet, b.Ordered, b.Code, b.Quote, b.TodoBlock,
+		b.OKRObjective, b.OKRKeyResult,
 	}
 	var result []*api.TextBlock
 	for _, tb := range candidates {
@@ -160,6 +177,10 @@ func (r *renderer) renderChildren(sb *strings.Builder, node *blockNode, depth in
 		} else if isSubstantiveBlock(child) {
 			orderedCounter = 0
 		}
+		// Ensure blank line before standalone blocks
+		if isStandaloneBlock(child.block.BlockType) {
+			ensureBlankLine(sb)
+		}
 		r.renderBlock(sb, child, depth, orderedCounter)
 	}
 }
@@ -185,6 +206,44 @@ func isSubstantiveBlock(node *blockNode) bool {
 		return false
 	}
 	return true
+}
+
+// ensureBlankLine ensures the builder ends with a double newline (blank line).
+// Used before standalone blocks to separate them from preceding content.
+func ensureBlankLine(sb *strings.Builder) {
+	s := sb.String()
+	if len(s) > 0 && !strings.HasSuffix(s, "\n\n") {
+		if strings.HasSuffix(s, "\n") {
+			sb.WriteString("\n")
+		} else {
+			sb.WriteString("\n\n")
+		}
+	}
+}
+
+// isStandaloneBlock returns true for block types that need a blank line before
+// them when following compact content (text, list items).
+func isStandaloneBlock(blockType int) bool {
+	switch blockType {
+	case 3, 4, 5, 6, 7, 8, 9, 10, 11: // Headings H1-H9
+		return true
+	case 14: // Code block
+		return true
+	case 15: // Quote
+		return true
+	case 19: // Callout
+		return true
+	case 22: // Divider
+		return true
+	case 31: // Table
+		return true
+	case 18, 20, 21, 23, 24, 26, 27, 28, 29, 30, 34, 35, 36, 37, 38, 39, 40, 41, 42:
+		// Bitable, ChatCard, Diagram, File, Grid, Iframe, Image, ISV, Mindnote,
+		// Sheet, QuoteContainer, Task, OKR types, AddOns, Jira, Wiki
+		return true
+	default:
+		return false
+	}
 }
 
 // indentPrefix returns the indentation string for nested list items
@@ -336,7 +395,7 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 
 	case 26: // Iframe
 		if node.block.Iframe != nil && node.block.Iframe.Component != nil && node.block.Iframe.Component.URL != "" {
-			sb.WriteString(fmt.Sprintf("[embed: %s]\n\n", node.block.Iframe.Component.URL))
+			sb.WriteString(fmt.Sprintf("[embed: %s]\n\n", decodeURL(node.block.Iframe.Component.URL)))
 		} else {
 			sb.WriteString("[embed]\n\n")
 		}
@@ -353,7 +412,19 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 		sb.WriteString("[mindnote]\n\n")
 
 	case 30: // Sheet
-		sb.WriteString("[sheet]\n\n")
+		if node.block.Sheet != nil && node.block.Sheet.Token != "" {
+			values, resolved := r.opts.SheetData[node.block.Sheet.Token]
+			if resolved && len(values) > 0 {
+				r.renderSheetAsTable(sb, values)
+			} else if resolved {
+				// Fetched successfully but sheet is empty
+				sb.WriteString("[empty sheet]\n\n")
+			} else {
+				sb.WriteString(fmt.Sprintf("[sheet: %s]\n\n", node.block.Sheet.Token))
+			}
+		} else {
+			sb.WriteString("[sheet]\n\n")
+		}
 
 	case 31: // Table
 		r.renderTable(sb, node)
@@ -391,8 +462,29 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 			sb.WriteString("[task]\n\n")
 		}
 
-	case 36, 37, 38, 39: // OKR, OKR Objective, OKR Key Result, OKR Progress
-		sb.WriteString("[okr]\n\n")
+	case 36: // OKR container
+		r.renderChildren(sb, node, depth)
+
+	case 37: // OKR Objective
+		if node.block.OKRObjective != nil {
+			text := r.renderTextBlock(node.block.OKRObjective)
+			if text != "" {
+				sb.WriteString("[objective] " + text + "\n")
+			}
+		}
+		r.renderChildren(sb, node, depth)
+
+	case 38: // OKR Key Result
+		if node.block.OKRKeyResult != nil {
+			text := r.renderTextBlock(node.block.OKRKeyResult)
+			if text != "" {
+				sb.WriteString("[key result] " + text + "\n")
+			}
+		}
+		r.renderChildren(sb, node, depth)
+
+	case 39: // OKR Progress
+		sb.WriteString("[okr progress]\n\n")
 
 	case 40: // AddOns
 		r.renderAddOns(sb, &node.block)
@@ -459,8 +551,24 @@ func (r *renderer) renderTable(sb *strings.Builder, node *blockNode) {
 		}
 	}
 
-	// Check if table has a header row
+	// Known limitations: header_column and merge_info have no markdown equivalent.
+	// header_column would require rendering certain columns in bold (not standard markdown).
+	// merge_info would require colspan/rowspan which markdown tables don't support.
 	hasHeader := prop.HeaderRow
+
+	// If no header row, emit an empty header row so data rows aren't promoted to header
+	if !hasHeader {
+		sb.WriteString("|")
+		for c := 0; c < cols; c++ {
+			sb.WriteString("  |")
+		}
+		sb.WriteString("\n")
+		sb.WriteString("|")
+		for c := 0; c < cols; c++ {
+			sb.WriteString(" --- |")
+		}
+		sb.WriteString("\n")
+	}
 
 	for row := 0; row < rows; row++ {
 		sb.WriteString("|")
@@ -478,17 +586,13 @@ func (r *renderer) renderTable(sb *strings.Builder, node *blockNode) {
 		}
 		sb.WriteString("\n")
 
-		// Add separator after first row (header or not — required by markdown)
-		if row == 0 {
+		// Add separator after first row when it's the header
+		if row == 0 && hasHeader {
 			sb.WriteString("|")
 			for c := 0; c < cols; c++ {
 				sb.WriteString(" --- |")
 			}
 			sb.WriteString("\n")
-
-			// If no header row, the first data row was just rendered as header.
-			// Markdown requires a header, so we accept this tradeoff.
-			_ = hasHeader
 		}
 	}
 	sb.WriteString("\n")
@@ -502,26 +606,7 @@ func (r *renderer) renderTableCell(cell *blockNode) string {
 
 	var parts []string
 	for _, child := range cell.children {
-		text := ""
-		switch child.block.BlockType {
-		case 2: // Text
-			text = r.renderTextBlock(child.block.Text)
-		case 12: // Bullet in cell
-			text = "- " + r.renderTextBlock(child.block.Bullet)
-		case 13: // Ordered in cell
-			text = r.renderTextBlock(child.block.Ordered)
-		case 31: // Nested table — flatten cell contents to text
-			text = r.flattenNestedTable(child)
-		default:
-			tb := getAnyTextBlock(&child.block)
-			if tb != nil {
-				text = r.renderTextBlock(tb)
-			}
-		}
-		text = strings.TrimSpace(text)
-		if text != "" {
-			parts = append(parts, text)
-		}
+		r.collectCellText(child, &parts)
 	}
 
 	result := strings.Join(parts, ", ")
@@ -576,6 +661,206 @@ func (r *renderer) flattenNestedTable(node *blockNode) string {
 		rowParts = append(rowParts, strings.Join(cellParts, " | "))
 	}
 	return strings.Join(rowParts, "; ")
+}
+
+// collectCellText recursively extracts inline text from a block node and all
+// its descendants, appending results to parts. Handles nested lists, container
+// blocks, and non-text leaf blocks inside table cells.
+func (r *renderer) collectCellText(node *blockNode, parts *[]string) {
+	text := ""
+	switch node.block.BlockType {
+	// Text blocks
+	case 2: // Text
+		text = r.renderTextBlock(node.block.Text)
+	case 12: // Bullet
+		text = "- " + r.renderTextBlock(node.block.Bullet)
+	case 13: // Ordered
+		text = r.renderTextBlock(node.block.Ordered)
+
+	// Nested table — flatten cell contents to text
+	case 31: // Table
+		text = r.flattenNestedTable(node)
+
+	// Non-text leaf blocks — emit placeholders mirroring renderBlock
+	case 23: // File
+		if node.block.File != nil {
+			name := node.block.File.Name
+			if name == "" {
+				name = node.block.File.Token
+			}
+			text = fmt.Sprintf("[file: %s]", name)
+		} else {
+			text = "[file]"
+		}
+	case 26: // Iframe
+		if node.block.Iframe != nil && node.block.Iframe.Component != nil && node.block.Iframe.Component.URL != "" {
+			text = fmt.Sprintf("[embed: %s]", node.block.Iframe.Component.URL)
+		} else {
+			text = "[embed]"
+		}
+	case 27: // Image
+		if node.block.Image != nil {
+			text = fmt.Sprintf("[image: %s]", node.block.Image.Token)
+		} else {
+			text = "[image]"
+		}
+	case 30: // Sheet
+		if node.block.Sheet != nil && node.block.Sheet.Token != "" {
+			text = fmt.Sprintf("[sheet: %s]", node.block.Sheet.Token)
+		} else {
+			text = "[sheet]"
+		}
+	case 35: // Task
+		if node.block.Task != nil && node.block.Task.TaskID != "" {
+			text = fmt.Sprintf("[task: %s]", node.block.Task.TaskID)
+		} else {
+			text = "[task]"
+		}
+	case 41: // JiraIssue
+		if node.block.JiraIssue != nil {
+			key := node.block.JiraIssue.Key
+			if key == "" {
+				key = node.block.JiraIssue.ID
+			}
+			if key != "" {
+				text = fmt.Sprintf("[jira: %s]", key)
+			} else {
+				text = "[jira]"
+			}
+		} else {
+			text = "[jira]"
+		}
+	case 42: // WikiCatalog
+		if node.block.WikiCatalog != nil && node.block.WikiCatalog.WikiToken != "" {
+			text = fmt.Sprintf("[wiki: %s]", node.block.WikiCatalog.WikiToken)
+		} else {
+			text = "[wiki]"
+		}
+
+	// Container blocks — no own text, just recurse
+	case 19, 24, 25, 33, 34: // Callout, Grid, GridColumn, View, QuoteContainer
+		// Fall through to recursion below
+
+	default:
+		tb := getAnyTextBlock(&node.block)
+		if tb != nil {
+			text = r.renderTextBlock(tb)
+		}
+	}
+
+	text = strings.TrimSpace(text)
+	if text != "" {
+		*parts = append(*parts, text)
+	}
+
+	// Recurse into children (skip for nested tables — already handled by flattenNestedTable)
+	if node.block.BlockType != 31 {
+		for _, child := range node.children {
+			r.collectCellText(child, parts)
+		}
+	}
+}
+
+// MaxInlineSheetRows is the maximum rows to render for embedded sheets in documents.
+// Smaller than the standalone sheet read cap (1000) to keep document output readable.
+// Exported so that the fetch logic in cmd/doc.go can use the same cap.
+const MaxInlineSheetRows = 200
+
+// renderSheetAsTable renders spreadsheet cell values as a markdown table.
+func (r *renderer) renderSheetAsTable(sb *strings.Builder, values [][]any) {
+	if len(values) == 0 {
+		return
+	}
+
+	// Determine max column count
+	cols := 0
+	for _, row := range values {
+		if len(row) > cols {
+			cols = len(row)
+		}
+	}
+	if cols == 0 {
+		return
+	}
+
+	// Cap rows for inline rendering
+	truncated := 0
+	rows := values
+	if len(rows) > MaxInlineSheetRows {
+		truncated = len(rows) - MaxInlineSheetRows
+		rows = rows[:MaxInlineSheetRows]
+	}
+
+	for i, row := range rows {
+		sb.WriteString("|")
+		for c := 0; c < cols; c++ {
+			cellContent := ""
+			if c < len(row) && row[c] != nil {
+				cellContent = stringifySheetCell(row[c])
+			}
+			// Markdown safety: escape inline markdown, pipes, and flatten newlines
+			cellContent = escapeMarkdown(cellContent)
+			cellContent = strings.ReplaceAll(cellContent, "|", "\\|")
+			cellContent = strings.ReplaceAll(cellContent, "\n", " ")
+			sb.WriteString(" ")
+			sb.WriteString(cellContent)
+			sb.WriteString(" |")
+		}
+		sb.WriteString("\n")
+
+		// Separator after header row
+		if i == 0 {
+			sb.WriteString("|")
+			for c := 0; c < cols; c++ {
+				sb.WriteString(" --- |")
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	if truncated > 0 {
+		sb.WriteString(fmt.Sprintf("*[%d more rows truncated]*\n", truncated))
+	}
+	sb.WriteString("\n")
+}
+
+// stringifySheetCell converts a sheet cell value to a plain text string.
+// With valueRenderOption=ToString, most cells are strings. This handles
+// residual types as fallback.
+func stringifySheetCell(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		return fmt.Sprintf("%g", val)
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case []any:
+		// Rich text segments — extract "text" field from each segment
+		var parts []string
+		for _, seg := range val {
+			if m, ok := seg.(map[string]any); ok {
+				if text, ok := m["text"].(string); ok {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "")
+	case map[string]any:
+		// Embedded objects (e.g., images)
+		if t, ok := val["type"].(string); ok && t == "embed-image" {
+			return "[image]"
+		}
+		if text, ok := val["text"].(string); ok && text != "" {
+			return text
+		}
+		return "[embedded object]"
+	default:
+		return fmt.Sprint(v)
+	}
 }
 
 // renderAddOns renders an AddOns block, detecting the type from component_type_id
@@ -671,6 +956,8 @@ func (r *renderer) renderTextElements(elements []api.TextElement) string {
 			sb.WriteString(fmt.Sprintf("[file: %s]", elem.InlineFile.FileToken))
 		} else if elem.InlineBlock != nil {
 			sb.WriteString(fmt.Sprintf("[block: %s]", elem.InlineBlock.BlockID))
+		} else {
+			fmt.Fprintln(os.Stderr, "warning: unsupported text element, use --raw for full content")
 		}
 	}
 	result := sb.String()
@@ -706,7 +993,7 @@ func (r *renderer) renderTextRun(tr *api.TextRun) string {
 
 	// Apply inline code (don't combine with other styles, no escaping needed)
 	if style.InlineCode {
-		return "`" + content + "`"
+		return inlineCodeWrap(content)
 	}
 
 	// Escape markdown-significant characters in plain text
@@ -792,6 +1079,12 @@ func getAnyTextBlock(block *api.DocumentBlock) *api.TextBlock {
 	if block.TodoBlock != nil {
 		return block.TodoBlock
 	}
+	if block.OKRObjective != nil {
+		return block.OKRObjective
+	}
+	if block.OKRKeyResult != nil {
+		return block.OKRKeyResult
+	}
 	return getHeadingTextBlock(block, block.BlockType-2)
 }
 
@@ -839,12 +1132,36 @@ func escapeMarkdown(s string) string {
 
 // decodeURL decodes a URL-encoded string from the Lark API.
 // The API returns URLs with percent-encoding (e.g., https%3A%2F%2F).
+// Uses PathUnescape (not QueryUnescape) to preserve '+' as literal.
 func decodeURL(s string) string {
-	decoded, err := url.QueryUnescape(s)
+	decoded, err := url.PathUnescape(s)
 	if err != nil {
 		return s
 	}
 	return decoded
+}
+
+// inlineCodeWrap wraps content in backtick delimiters, using enough backticks
+// to safely contain any backtick runs in the content (per CommonMark spec).
+func inlineCodeWrap(s string) string {
+	maxRun := 0
+	run := 0
+	for _, c := range s {
+		if c == '`' {
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", maxRun+1)
+	// CommonMark: add space padding if content starts/ends with backtick
+	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
+		return fence + " " + s + " " + fence
+	}
+	return fence + s + fence
 }
 
 // codeFence returns a backtick fence string long enough to safely wrap content.
