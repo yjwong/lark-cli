@@ -934,3 +934,130 @@ func TestRenderBlocks_TableWithCellsOrdering(t *testing.T) {
 		t.Errorf("expected cells in Table.Cells order, got %q", result)
 	}
 }
+
+func TestRenderBlocks_NestedTable(t *testing.T) {
+	// Outer table has one cell containing a nested 1x2 table
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"outer"}},
+		{BlockID: "outer", ParentID: "page", BlockType: 31,
+			Children: []string{"oc1"},
+			Table: &api.TableBlock{
+				Cells:    []string{"oc1"},
+				Property: &api.TableProperty{RowSize: 1, ColumnSize: 1},
+			},
+		},
+		{BlockID: "oc1", ParentID: "outer", BlockType: 32, Children: []string{"inner"}},
+		{BlockID: "inner", ParentID: "oc1", BlockType: 31,
+			Children: []string{"ic1", "ic2"},
+			Table: &api.TableBlock{
+				Cells:    []string{"ic1", "ic2"},
+				Property: &api.TableProperty{RowSize: 1, ColumnSize: 2},
+			},
+		},
+		{BlockID: "ic1", ParentID: "inner", BlockType: 32, Children: []string{"ic1t"}},
+		{BlockID: "ic1t", ParentID: "ic1", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Alpha"}}},
+		}},
+		{BlockID: "ic2", ParentID: "inner", BlockType: 32, Children: []string{"ic2t"}},
+		{BlockID: "ic2t", ParentID: "ic2", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Beta"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	// Nested table cells should appear as flattened text
+	if !strings.Contains(result, "Alpha") || !strings.Contains(result, "Beta") {
+		t.Errorf("expected nested table content preserved, got %q", result)
+	}
+}
+
+func TestRenderBlocks_EmptyCallout(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"co1"}},
+		{BlockID: "co1", ParentID: "page", BlockType: 19,
+			Callout: &api.CalloutBlock{EmojiID: "star"},
+		},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "> [callout: star]") {
+		t.Errorf("expected empty callout with emoji ID, got %q", result)
+	}
+}
+
+func TestRenderBlocks_EmptyCalloutNoEmoji(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"co1"}},
+		{BlockID: "co1", ParentID: "page", BlockType: 19},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "> [callout]") {
+		t.Errorf("expected empty callout placeholder, got %q", result)
+	}
+}
+
+func TestRenderBlocks_NestedQuoteContainer(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"qc1"}},
+		{BlockID: "qc1", ParentID: "page", BlockType: 34, Children: []string{"qc2"}},
+		{BlockID: "qc2", ParentID: "qc1", BlockType: 34, Children: []string{"qt"}},
+		{BlockID: "qt", ParentID: "qc2", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "nested quote"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "> > nested quote") {
+		t.Errorf("expected nested blockquote > > prefix, got %q", result)
+	}
+}
+
+func TestRenderBlocks_OrderedListAcrossEmptyText(t *testing.T) {
+	// Ordered list items with an empty text block between them should continue numbering
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"o1", "empty", "o2"}},
+		{BlockID: "o1", ParentID: "page", BlockType: 13, Ordered: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "First"}}},
+		}},
+		{BlockID: "empty", ParentID: "page", BlockType: 2, Text: &api.TextBlock{}},
+		{BlockID: "o2", ParentID: "page", BlockType: 13, Ordered: &api.TextBlock{
+			Elements: []api.TextElement{{TextRun: &api.TextRun{Content: "Second"}}},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "1. First") {
+		t.Errorf("expected '1. First', got %q", result)
+	}
+	if !strings.Contains(result, "2. Second") {
+		t.Errorf("expected '2. Second' (continued numbering), got %q", result)
+	}
+}
+
+func TestRenderBlocks_TaskWithDetails(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1", "t2"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 35, Task: &api.TaskBlock{TaskID: "guid-1"}},
+		{BlockID: "t2", ParentID: "page", BlockType: 35, Task: &api.TaskBlock{TaskID: "guid-2"}},
+	}
+	opts := RenderOptions{
+		TaskDetails: map[string]TaskInfo{
+			"guid-1": {Summary: "Buy groceries", Completed: false},
+			"guid-2": {Summary: "Send report", Completed: true},
+		},
+	}
+	result := RenderBlocksWithOptions(blocks, opts)
+	if !strings.Contains(result, "- [ ] Buy groceries") {
+		t.Errorf("expected incomplete task checkbox, got %q", result)
+	}
+	if !strings.Contains(result, "- [x] ~~Send report~~") {
+		t.Errorf("expected completed task checkbox with strikethrough, got %q", result)
+	}
+}
+
+func TestRenderBlocks_TaskWithoutDetails(t *testing.T) {
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 35, Task: &api.TaskBlock{TaskID: "guid-1"}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[task: guid-1]") {
+		t.Errorf("expected task UUID fallback, got %q", result)
+	}
+}

@@ -846,6 +846,22 @@ type WikiCatalogBlock struct {
 	WikiToken string `json:"wiki_token,omitempty"`
 }
 
+// TaskDetail represents resolved task details from the Task API
+type TaskDetail struct {
+	GUID        string `json:"guid,omitempty"`
+	Summary     string `json:"summary,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"` // non-empty if task is completed
+}
+
+// TaskDetailResponse is the API response for getting task details
+type TaskDetailResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Task *TaskDetail `json:"task,omitempty"`
+	} `json:"data,omitempty"`
+}
+
 // DocumentBlock represents a block in a document
 type DocumentBlock struct {
 	BlockID        string               `json:"block_id,omitempty"`

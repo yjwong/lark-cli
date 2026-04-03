@@ -12,11 +12,20 @@ import (
 	"github.com/yjwong/lark-cli/internal/api"
 )
 
+// TaskInfo holds resolved task details for rendering
+type TaskInfo struct {
+	Summary   string
+	Completed bool
+}
+
 // RenderOptions configures the block renderer
 type RenderOptions struct {
 	// UserNames maps user IDs (e.g., "ou_xxx") to display names.
 	// If nil or a user ID is missing, falls back to @user_id.
 	UserNames map[string]string
+	// TaskDetails maps task GUIDs to resolved task info.
+	// If nil or a task GUID is missing, falls back to [task: UUID].
+	TaskDetails map[string]TaskInfo
 }
 
 // blockNode wraps a DocumentBlock with resolved children for tree traversal
@@ -83,6 +92,19 @@ func ExtractImageTokens(blocks []api.DocumentBlock) []string {
 	return tokens
 }
 
+// ExtractTaskIDs collects all unique task GUIDs from a block list
+func ExtractTaskIDs(blocks []api.DocumentBlock) []string {
+	seen := make(map[string]bool)
+	var ids []string
+	for _, b := range blocks {
+		if b.BlockType == 35 && b.Task != nil && b.Task.TaskID != "" && !seen[b.Task.TaskID] {
+			seen[b.Task.TaskID] = true
+			ids = append(ids, b.Task.TaskID)
+		}
+	}
+	return ids
+}
+
 // allTextBlocks returns all TextBlock pointers from a DocumentBlock
 func allTextBlocks(b *api.DocumentBlock) []*api.TextBlock {
 	candidates := []*api.TextBlock{
@@ -135,11 +157,34 @@ func (r *renderer) renderChildren(sb *strings.Builder, node *blockNode, depth in
 	for _, child := range node.children {
 		if child.block.BlockType == 13 { // ordered list
 			orderedCounter++
-		} else {
+		} else if isSubstantiveBlock(child) {
 			orderedCounter = 0
 		}
 		r.renderBlock(sb, child, depth, orderedCounter)
 	}
+}
+
+// isSubstantiveBlock returns true if the block has meaningful content that should
+// interrupt ordered list numbering. Empty text blocks (common in Lark docs as
+// spacers between list items) are not considered substantive.
+func isSubstantiveBlock(node *blockNode) bool {
+	if node.block.BlockType == 2 { // Text block
+		if node.block.Text == nil || len(node.block.Text.Elements) == 0 {
+			return false
+		}
+		// Check if all elements are empty text runs
+		for _, elem := range node.block.Text.Elements {
+			if elem.TextRun != nil && strings.TrimSpace(elem.TextRun.Content) != "" {
+				return true
+			}
+			if elem.MentionUser != nil || elem.MentionDoc != nil || elem.Equation != nil ||
+				elem.Reminder != nil || elem.InlineFile != nil || elem.InlineBlock != nil {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
 
 // indentPrefix returns the indentation string for nested list items
@@ -251,6 +296,13 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 				sb.WriteString("\n")
 			}
 			sb.WriteString("\n")
+		} else {
+			// Empty callout — render placeholder with emoji ID if available
+			if node.block.Callout != nil && node.block.Callout.EmojiID != "" {
+				sb.WriteString(fmt.Sprintf("> [callout: %s]\n\n", node.block.Callout.EmojiID))
+			} else {
+				sb.WriteString("> [callout]\n\n")
+			}
 		}
 
 	case 18: // Bitable
@@ -326,7 +378,15 @@ func (r *renderer) renderBlock(sb *strings.Builder, node *blockNode, depth int, 
 
 	case 35: // Task
 		if node.block.Task != nil && node.block.Task.TaskID != "" {
-			sb.WriteString(fmt.Sprintf("[task: %s]\n\n", node.block.Task.TaskID))
+			if info, ok := r.opts.TaskDetails[node.block.Task.TaskID]; ok && info.Summary != "" {
+				if info.Completed {
+					sb.WriteString(fmt.Sprintf("- [x] ~~%s~~\n", info.Summary))
+				} else {
+					sb.WriteString(fmt.Sprintf("- [ ] %s\n", info.Summary))
+				}
+			} else {
+				sb.WriteString(fmt.Sprintf("[task: %s]\n\n", node.block.Task.TaskID))
+			}
 		} else {
 			sb.WriteString("[task]\n\n")
 		}
@@ -450,6 +510,8 @@ func (r *renderer) renderTableCell(cell *blockNode) string {
 			text = "- " + r.renderTextBlock(child.block.Bullet)
 		case 13: // Ordered in cell
 			text = r.renderTextBlock(child.block.Ordered)
+		case 31: // Nested table — flatten cell contents to text
+			text = r.flattenNestedTable(child)
 		default:
 			tb := getAnyTextBlock(&child.block)
 			if tb != nil {
@@ -466,6 +528,54 @@ func (r *renderer) renderTableCell(cell *blockNode) string {
 	// Markdown table cells must be single-line; replace any newlines with spaces
 	result = strings.ReplaceAll(result, "\n", " ")
 	return result
+}
+
+// flattenNestedTable renders a nested table's contents as flat text.
+// Uses Table.Cells for canonical cell ordering (same as renderTable).
+// Cells within a row are joined with " | ", rows with "; ".
+func (r *renderer) flattenNestedTable(node *blockNode) string {
+	if node.block.Table == nil || node.block.Table.Property == nil {
+		return ""
+	}
+	prop := node.block.Table.Property
+	rows := prop.RowSize
+	cols := prop.ColumnSize
+	if rows == 0 || cols == 0 || len(node.children) == 0 {
+		return ""
+	}
+
+	// Resolve cell order using Table.Cells (canonical), falling back to children
+	cells := node.children
+	if len(node.block.Table.Cells) > 0 {
+		childIndex := make(map[string]*blockNode, len(node.children))
+		for _, child := range node.children {
+			childIndex[child.block.BlockID] = child
+		}
+		ordered := make([]*blockNode, 0, len(node.block.Table.Cells))
+		for _, cellID := range node.block.Table.Cells {
+			if cell, ok := childIndex[cellID]; ok {
+				ordered = append(ordered, cell)
+			}
+		}
+		if len(ordered) > 0 {
+			cells = ordered
+		}
+	}
+
+	var rowParts []string
+	for row := 0; row < rows; row++ {
+		var cellParts []string
+		for c := 0; c < cols; c++ {
+			idx := row*cols + c
+			content := ""
+			if idx < len(cells) {
+				content = r.renderTableCell(cells[idx])
+			}
+			cellParts = append(cellParts, content)
+		}
+		rowParts = append(rowParts, strings.Join(cellParts, " | "))
+	}
+	return strings.Join(rowParts, "; ")
 }
 
 // renderAddOns renders an AddOns block, detecting the type from component_type_id

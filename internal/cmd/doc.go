@@ -71,6 +71,11 @@ Examples:
 				opts.UserNames = resolveUserNames(client, userIDs)
 			}
 
+			// Resolve task details (best-effort)
+			if taskIDs := docrender.ExtractTaskIDs(blocks); len(taskIDs) > 0 {
+				opts.TaskDetails = resolveTaskDetails(client, taskIDs)
+			}
+
 			content = docrender.RenderBlocksWithOptions(blocks, opts)
 		}
 
@@ -406,6 +411,37 @@ func resolveUserNames(client *api.Client, userIDs []string) map[string]string {
 	}
 
 	return names
+}
+
+// resolveTaskDetails fetches task details for rendering. Best-effort: logs a
+// warning on failure and returns nil so the renderer falls back to [task: UUID].
+func resolveTaskDetails(client *api.Client, taskIDs []string) map[string]docrender.TaskInfo {
+	details := make(map[string]docrender.TaskInfo, len(taskIDs))
+	var errCount int
+
+	for _, id := range taskIDs {
+		task, err := client.GetTask(id)
+		if err != nil {
+			errCount++
+			continue
+		}
+		if task != nil {
+			details[id] = docrender.TaskInfo{
+				Summary:   task.Summary,
+				Completed: task.CompletedAt != "",
+			}
+		}
+	}
+
+	if errCount > 0 {
+		fmt.Fprintf(os.Stderr, "warning: could not resolve %d of %d task(s) to details\n", errCount, len(taskIDs))
+		fmt.Fprintln(os.Stderr, "  hint: ensure 'task:task:read' scope is approved for your app")
+	}
+
+	if len(details) == 0 {
+		return nil
+	}
+	return details
 }
 
 // formatUnixTimestamp converts a unix timestamp to RFC3339 format
