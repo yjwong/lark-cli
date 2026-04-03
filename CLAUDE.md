@@ -78,9 +78,17 @@ See `USAGE.md` for full CLI documentation. Main commands:
 - `doc list [folder_token]` - List items in a Drive folder
 - `doc get <document_id>` - Get document content as markdown
 - `doc blocks <document_id>` - Get document block structure (JSON)
+- `doc create --title "..." [--folder ...]` - Create a new document
+- `doc append <document_id>` - Append blocks (text, headings, lists, code, tables, etc.)
+- `doc update-block <document_id> <block_id>` - Update existing block content
+- `doc search <query>` - Search documents by keyword
+- `doc comments <document_id>` - Get document comments
+- `doc download <file_token> -o <path>` - Download a Drive file
+- `doc image <image_token> --doc <id>` - Download a document image
 - `doc wiki <node_token>` - Resolve wiki node to document token
-- `doc image <token> --doc <id>` - Download a single document image
 - `doc images <document_id> -o <dir>` - Batch download all images from a document
+- `doc wiki-children <node_token>` - List child wiki nodes
+- `doc wiki-search <query>` - Search wiki nodes
 
 ### Mail (`mail`)
 - `mail setup` - Configure IMAP credentials (interactive)

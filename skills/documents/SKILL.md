@@ -330,6 +330,7 @@ Content flags (at least one required):
 - `--ordered "item"`: Append ordered list items (repeatable)
 - `--todo "item"`: Append a todo/checkbox item
 - `--divider`: Append a horizontal divider
+- `--table "ROWSxCOLS"`: Append a table (e.g., `--table 3x4` for 3 rows, 4 columns; header row enabled by default)
 - `--json`: Read raw block JSON from stdin
 
 Other flags:
@@ -348,6 +349,9 @@ lark doc append ABC123xyz --bullet "First item" --bullet "Second item"
 # Add a code block (Python)
 lark doc append ABC123xyz --code "print('hello')" --language 49
 
+# Add a 3x4 table
+lark doc append ABC123xyz --table 3x4
+
 # Add raw blocks via JSON stdin
 echo '[{"block_type":2,"text":{"elements":[{"text_run":{"content":"raw"}}]}}]' | lark doc append ABC123xyz --json
 ```
@@ -360,6 +364,45 @@ Output:
   "success": true,
   "document_revision_id": 5,
   "blocks": [...]
+}
+```
+
+### Update a Document Block
+
+```bash
+lark doc update-block <document-id> <block-id> [flags]
+```
+
+Updates the text content of an existing block. Useful for populating table cells after creating a table, or modifying any text block.
+
+**Important:** You must target a text block (block_type 2), not a container block. For table cells, each `table_cell` (block_type 32) contains a child text block — use that child's block ID.
+
+Content flags (one required):
+- `--text "content"`: Set plain text content
+- `--json`: Read rich text elements JSON from stdin
+
+Examples:
+```bash
+# Set plain text content
+lark doc update-block DOC_ID TEXT_BLOCK_ID --text "Cell content"
+
+# Set rich text (bold, etc.) via JSON stdin
+echo '{"elements":[{"text_run":{"content":"Bold text","text_element_style":{"bold":true}}}]}' | \
+  lark doc update-block DOC_ID TEXT_BLOCK_ID --json
+```
+
+**Table workflow:**
+1. Create a table: `lark doc append DOC_ID --table 3x4`
+2. Get block structure: `lark doc blocks DOC_ID`
+3. Find the text blocks (block_type 2) inside each `table_cell` (block_type 32) — use the child block ID, **not** the cell block ID
+4. Update each cell: `lark doc update-block DOC_ID TEXT_BLOCK_ID --text "content"`
+
+Output:
+```json
+{
+  "success": true,
+  "document_revision_id": 6,
+  "block": {...}
 }
 ```
 
@@ -440,7 +483,8 @@ Output:
 | Wiki URL | `doc wiki` then `doc get` | Must resolve wiki node first |
 | List wiki sub-pages | `doc wiki-children` | Browse wiki hierarchy |
 | Create a new document | `doc create` | Creates empty doc with title |
-| Append content to doc | `doc append` | Add text, headings, lists, code, etc. |
+| Append content to doc | `doc append` | Add text, headings, lists, code, tables, etc. |
+| Update block content | `doc update-block` | Modify existing block text (e.g., table cells) |
 | Read/summarize content | `doc get` | Markdown is compact (~90KB) |
 | Download a document image | `doc image <token> --doc <id>` | Single image by token |
 | Download all images | `doc images <id> -o <dir>` | Batch download for analysis |

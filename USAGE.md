@@ -6,7 +6,7 @@ A CLI tool for interacting with Lark APIs (calendar, contacts, documents). Desig
 
 ### 1. Create a Lark App
 
-1. Go to https://open.larksuite.com and create a custom app
+1. Go to https://open.larksuite.com (or https://open.feishu.cn for Feishu) and create a custom app
 2. Enable these permissions:
    - `calendar:calendar` (read/write calendar and events)
    - `contact:contact.base:readonly` (read contacts)
@@ -34,6 +34,7 @@ cp config.example.yaml .lark/config.yaml
 Edit `.lark/config.yaml`:
 ```yaml
 app_id: "cli_xxxxxxxxxx"  # Your App ID
+region: "lark"            # "lark" (default) or "feishu"
 ```
 
 Set your app secret as environment variable:
@@ -848,6 +849,120 @@ Fields:
 - `is_solved`: whether the comment thread has been resolved
 - `quote`: the text from the document that was highlighted when commenting (for inline comments)
 
+#### Create Document
+
+```bash
+./lark doc create --title "My Document" [--folder <folder-token>]
+```
+
+Creates a new empty Lark document. Optionally specify a folder to create it in.
+
+Flags:
+- `--title` (required): Document title
+- `--folder`: Folder token to create the document in (default: root cloud space)
+
+Output:
+```json
+{
+  "success": true,
+  "document_id": "BKlmdClegoCan5x5Rzbl73QQgEC",
+  "revision_id": 1,
+  "title": "My Document"
+}
+```
+
+#### Append Content to Document
+
+```bash
+./lark doc append <document-id> [flags]
+```
+
+Appends content blocks to an existing document. Supports multiple block types.
+
+Content flags (at least one required):
+- `--text "content"`: Append a text paragraph
+- `--heading "content" --level <1-9>`: Append a heading (default level 1)
+- `--code "content" --language <id>`: Append a code block
+- `--bullet "item"`: Append bullet list items (repeatable)
+- `--ordered "item"`: Append ordered list items (repeatable)
+- `--todo "item"`: Append a todo/checkbox item
+- `--divider`: Append a horizontal divider
+- `--table "ROWSxCOLS"`: Append a table (e.g., `--table 3x4`; header row enabled by default)
+- `--json`: Read raw block JSON from stdin
+
+Other flags:
+- `--block-id`: Parent block ID to append under (default: document root)
+- `--index`: Insertion position (-1=end, 0=beginning)
+
+Examples:
+```bash
+# Add a heading and text
+./lark doc append ABC123xyz --heading "Section Title" --level 2
+./lark doc append ABC123xyz --text "Hello from CLI"
+
+# Add a 3x4 table
+./lark doc append ABC123xyz --table 3x4
+
+# Add a bullet list
+./lark doc append ABC123xyz --bullet "First item" --bullet "Second item"
+
+# Add a code block (Python)
+./lark doc append ABC123xyz --code "print('hello')" --language 49
+
+# Add raw blocks via JSON stdin
+echo '[{"block_type":2,"text":{"elements":[{"text_run":{"content":"raw"}}]}}]' | ./lark doc append ABC123xyz --json
+```
+
+Common code language IDs: 1=PlainText, 7=Bash, 22=Go, 29=Java, 30=JavaScript, 49=Python, 53=Rust, 56=SQL, 63=TypeScript, 67=YAML
+
+Output:
+```json
+{
+  "success": true,
+  "document_revision_id": 5,
+  "blocks": [...]
+}
+```
+
+#### Update Document Block
+
+```bash
+./lark doc update-block <document-id> <block-id> [flags]
+```
+
+Updates the text content of an existing block. Useful for populating table cells or modifying any text block.
+
+**Important:** You must target a text block (block_type 2), not a container block. For table cells, each `table_cell` (block_type 32) contains a child text block — use that child's block ID.
+
+Content flags (one required):
+- `--text "content"`: Set plain text content
+- `--json`: Read rich text elements JSON from stdin
+
+Examples:
+```bash
+# Set plain text content
+./lark doc update-block DOC_ID BLOCK_ID --text "Cell content"
+
+# Set rich text (bold, etc.) via JSON stdin
+echo '{"elements":[{"text_run":{"content":"Bold text","text_element_style":{"bold":true}}}]}' | \
+  ./lark doc update-block DOC_ID BLOCK_ID --json
+```
+
+**Table workflow:**
+1. Create a table: `doc append DOC_ID --table 3x4`
+2. Get block structure: `doc blocks DOC_ID`
+3. Find the text blocks (block_type 2) inside each table_cell (block_type 32) — use the child block ID, **not** the cell block ID
+4. Update each cell: `doc update-block DOC_ID TEXT_BLOCK_ID --text "content"`
+
+Output:
+```json
+{
+  "success": true,
+  "document_revision_id": 6,
+  "block": {...}
+}
+```
+
 #### Efficient Extraction with jq and grep
 
 For large documents, use `jq` and `grep` to extract specific information:
@@ -1182,6 +1297,7 @@ Config file: `.lark/config.yaml`
 
 ```yaml
 app_id: "cli_xxxxxxxxxx"
+region: "lark" # or "feishu"
 defaults:
   timezone: "Asia/Singapore"
   reminder_minutes: 15

@@ -25,11 +25,12 @@ The result: AI assistants can interact with Lark using fewer tokens, leaving mor
 
 ## Quick Start
 
-1. Create a Lark app at https://open.larksuite.com with appropriate permissions
+1. Create a Lark app at https://open.larksuite.com (or Feishu app at https://open.feishu.cn) with appropriate permissions
 2. Copy `config.example.yaml` to `.lark/config.yaml` and add your App ID
-3. Set `LARK_APP_SECRET` environment variable
-4. Run `./lark auth login` to authenticate
-5. Start using: `./lark cal list --week`
+3. Set `region` in `.lark/config.yaml` to `lark` (default) or `feishu`
+4. Set `LARK_APP_SECRET` environment variable
+5. Run `./lark auth login` to authenticate
+6. Start using: `./lark cal list --week`
 
 See [USAGE.md](USAGE.md) for full documentation.
 

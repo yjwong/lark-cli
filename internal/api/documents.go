@@ -124,6 +124,26 @@ func (c *Client) CreateDocumentBlocks(documentID, blockID string, children []Doc
 	return resp.Data.Children, resp.Data.DocumentRevisionID, nil
 }
 
+// UpdateDocumentBlock updates an existing block's content
+// documentID: the document ID
+// blockID: the block ID to update
+// req: the update request body
+func (c *Client) UpdateDocumentBlock(documentID, blockID string, req UpdateBlockRequest) (*DocumentBlock, int, error) {
+	path := fmt.Sprintf("/docx/v1/documents/%s/blocks/%s?document_revision_id=-1",
+		url.PathEscape(documentID), url.PathEscape(blockID))
+
+	var resp UpdateBlockResponse
+	if err := c.Patch(path, req, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	if resp.Code != 0 {
+		return nil, 0, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	return resp.Data.Block, resp.Data.DocumentRevisionID, nil
+}
+
 // ListFolderItems lists items in a Lark Drive folder
 // folderToken: folder token (empty for root cloud space)
 // pageSize: number of items per page (max 200)

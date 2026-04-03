@@ -899,6 +899,7 @@ Examples:
 		orderedItems, _ := cmd.Flags().GetStringSlice("ordered")
 		todoContent, _ := cmd.Flags().GetString("todo")
 		addDivider, _ := cmd.Flags().GetBool("divider")
+		tableSpec, _ := cmd.Flags().GetString("table")
 		useJSON, _ := cmd.Flags().GetBool("json")
 		index, _ := cmd.Flags().GetInt("index")
 
@@ -990,6 +991,26 @@ Examples:
 				})
 			}
 
+			if tableSpec != "" {
+				var rows, cols int
+				if _, err := fmt.Sscanf(tableSpec, "%dx%d", &rows, &cols); err != nil {
+					output.Fatal("PARSE_ERROR", fmt.Errorf("invalid table spec %q, expected ROWSxCOLS (e.g. 3x4)", tableSpec))
+				}
+				if rows < 1 || cols < 1 {
+					output.Fatal("VALIDATION_ERROR", fmt.Errorf("table dimensions must be positive, got %dx%d", rows, cols))
+				}
+				blocks = append(blocks, api.DocumentBlock{
+					BlockType: 31, // table
+					Table: &api.TableBlock{
+						Property: &api.TableProperty{
+							RowSize:    rows,
+							ColumnSize: cols,
+							HeaderRow:  true,
+						},
+					},
+				})
+			}
+
 			if addDivider {
 				blocks = append(blocks, api.DocumentBlock{
 					BlockType: 22, // divider
@@ -999,7 +1020,7 @@ Examples:
 		}
 
 		if len(blocks) == 0 {
-			output.Fatal("MISSING_ARG", fmt.Errorf("at least one content flag is required (--text, --heading, --code, --bullet, --ordered, --todo, --divider, or --json)"))
+			output.Fatal("MISSING_ARG", fmt.Errorf("at least one content flag is required (--text, --heading, --code, --bullet, --ordered, --todo, --divider, --table, or --json)"))
 		}
 
 		client := api.NewClient()
@@ -1013,6 +1034,72 @@ Examples:
 			Success:            true,
 			DocumentRevisionID: revisionID,
 			Blocks:             createdBlocks,
+		}
+
+		output.JSON(result)
+	},
+}
+
+// --- doc update-block ---
+
+var docUpdateBlockCmd = &cobra.Command{
+	Use:   "update-block <document_id> <block_id>",
+	Short: "Update content of a document block",
+	Long: `Update the text content of an existing block in a Lark document.
+
+Useful for populating table cells or modifying existing text blocks.
+
+Use --text for simple plain text content, or --json to read rich text
+elements from stdin.
+
+Examples:
+  lark doc update-block DOC_ID BLOCK_ID --text "Cell content"
+  echo '{"elements":[{"text_run":{"content":"Bold","text_element_style":{"bold":true}}}]}' | \
+    lark doc update-block DOC_ID BLOCK_ID --json`,
+	Args: cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		documentID := args[0]
+		blockID := args[1]
+		textContent, _ := cmd.Flags().GetString("text")
+		useJSON, _ := cmd.Flags().GetBool("json")
+
+		var req api.UpdateBlockRequest
+
+		if useJSON {
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				output.Fatal("INPUT_ERROR", fmt.Errorf("failed to read stdin: %w", err))
+			}
+			var elements api.UpdateTextElements
+			if err := json.Unmarshal(data, &elements); err != nil {
+				output.Fatal("PARSE_ERROR", fmt.Errorf("invalid JSON: %w", err))
+			}
+			req.UpdateTextElements = &elements
+		} else if textContent != "" {
+			req.UpdateTextElements = &api.UpdateTextElements{
+				Elements: []api.TextElement{
+					{
+						TextRun: &api.TextRun{
+							Content: textContent,
+						},
+					},
+				},
+			}
+		} else {
+			output.Fatal("MISSING_ARG", fmt.Errorf("--text or --json is required"))
+		}
+
+		client := api.NewClient()
+
+		block, revisionID, err := client.UpdateDocumentBlock(documentID, blockID, req)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		result := api.OutputDocumentUpdateBlock{
+			Success:            true,
+			DocumentRevisionID: revisionID,
+			Block:              block,
 		}
 
 		output.JSON(result)
@@ -1039,6 +1126,7 @@ func init() {
 	docCmd.AddCommand(docDownloadCmd)
 	docCmd.AddCommand(docCreateCmd)
 	docCmd.AddCommand(docAppendCmd)
+	docCmd.AddCommand(docUpdateBlockCmd)
 
 	// Flags for doc get
 	docGetCmd.Flags().Bool("raw", false, "Use legacy server-rendered markdown (instead of block-based renderer)")
@@ -1077,6 +1165,11 @@ func init() {
 	docAppendCmd.Flags().StringSlice("ordered", nil, "Append ordered list items (repeatable)")
 	docAppendCmd.Flags().String("todo", "", "Append a todo item")
 	docAppendCmd.Flags().Bool("divider", false, "Append a divider")
+	docAppendCmd.Flags().String("table", "", "Append a table (format: ROWSxCOLS, e.g. 3x4)")
 	docAppendCmd.Flags().Bool("json", false, "Read raw block JSON from stdin")
 	docAppendCmd.Flags().Int("index", -1, "Insertion position (-1=end, 0=beginning)")
+
+	// Flags for doc update-block
+	docUpdateBlockCmd.Flags().String("text", "", "Set block text content (plain text)")
+	docUpdateBlockCmd.Flags().Bool("json", false, "Read text elements JSON from stdin")
 }
