@@ -623,7 +623,7 @@ func TestRenderBlocks_Reminder(t *testing.T) {
 		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
 			Elements: []api.TextElement{
 				{Reminder: &api.InlineReminder{
-					ExpireTime: 1710460800000, // 2024-03-15T00:00:00Z
+					ExpireTime: api.FlexInt64(1710460800000), // 2024-03-15T00:00:00Z
 					IsWholeDay: true,
 				}},
 			},
@@ -641,7 +641,7 @@ func TestRenderBlocks_ReminderWithTime(t *testing.T) {
 		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
 			Elements: []api.TextElement{
 				{Reminder: &api.InlineReminder{
-					ExpireTime: 1710500400000, // 2024-03-15T11:00:00Z
+					ExpireTime: api.FlexInt64(1710500400000), // 2024-03-15T11:00:00Z
 					IsWholeDay: false,
 				}},
 			},
@@ -650,6 +650,22 @@ func TestRenderBlocks_ReminderWithTime(t *testing.T) {
 	result := RenderBlocks(blocks)
 	if !strings.Contains(result, "[reminder: 2024-03-15T11:00:00Z]") {
 		t.Errorf("expected datetime reminder in UTC, got %q", result)
+	}
+}
+
+func TestRenderBlocks_ReminderZeroExpireTime(t *testing.T) {
+	// When ExpireTime is 0 (field omitted or unparseable), render plain [reminder]
+	blocks := []api.DocumentBlock{
+		{BlockID: "page", BlockType: 1, Children: []string{"t1"}},
+		{BlockID: "t1", ParentID: "page", BlockType: 2, Text: &api.TextBlock{
+			Elements: []api.TextElement{
+				{Reminder: &api.InlineReminder{IsWholeDay: true}},
+			},
+		}},
+	}
+	result := RenderBlocks(blocks)
+	if !strings.Contains(result, "[reminder]") {
+		t.Errorf("expected plain [reminder] for zero expire time, got %q", result)
 	}
 }
 

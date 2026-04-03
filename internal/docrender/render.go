@@ -546,11 +546,16 @@ func (r *renderer) renderTextElements(elements []api.TextElement) string {
 			sb.WriteString(elem.Equation.Content)
 			sb.WriteString("$")
 		} else if elem.Reminder != nil {
-			t := time.UnixMilli(elem.Reminder.ExpireTime).UTC()
-			if elem.Reminder.IsWholeDay {
-				sb.WriteString(fmt.Sprintf("[reminder: %s]", t.Format("2006-01-02")))
+			expireMs := int64(elem.Reminder.ExpireTime)
+			if expireMs > 0 {
+				t := time.UnixMilli(expireMs).UTC()
+				if elem.Reminder.IsWholeDay {
+					sb.WriteString(fmt.Sprintf("[reminder: %s]", t.Format("2006-01-02")))
+				} else {
+					sb.WriteString(fmt.Sprintf("[reminder: %s]", t.Format(time.RFC3339)))
+				}
 			} else {
-				sb.WriteString(fmt.Sprintf("[reminder: %s]", t.Format(time.RFC3339)))
+				sb.WriteString("[reminder]")
 			}
 		} else if elem.InlineFile != nil {
 			sb.WriteString(fmt.Sprintf("[file: %s]", elem.InlineFile.FileToken))

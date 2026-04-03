@@ -1,6 +1,11 @@
 package api
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"time"
+)
 
 // TimeInfo represents Lark's time structure
 type TimeInfo struct {
@@ -628,13 +633,38 @@ type Equation struct {
 	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
 }
 
+// FlexInt64 unmarshals from both JSON strings and numbers.
+// Lark API docs inconsistently document expire_time/notify_time as int vs string;
+// the actual wire format from the list-blocks endpoint is a string.
+type FlexInt64 int64
+
+func (f *FlexInt64) UnmarshalJSON(data []byte) error {
+	// Try number first (cheaper, no alloc)
+	var n int64
+	if err := json.Unmarshal(data, &n); err == nil {
+		*f = FlexInt64(n)
+		return nil
+	}
+	// Try string
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("FlexInt64: cannot unmarshal %s", string(data))
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return fmt.Errorf("FlexInt64: cannot parse %q as int64: %w", s, err)
+	}
+	*f = FlexInt64(n)
+	return nil
+}
+
 // InlineReminder represents an inline date reminder element in document text
 type InlineReminder struct {
 	CreateUserID     string            `json:"create_user_id,omitempty"`
 	IsNotify         bool              `json:"is_notify,omitempty"`
 	IsWholeDay       bool              `json:"is_whole_day,omitempty"`
-	ExpireTime       int64             `json:"expire_time,omitempty"`
-	NotifyTime       int64             `json:"notify_time,omitempty"`
+	ExpireTime       FlexInt64         `json:"expire_time,omitempty"`
+	NotifyTime       FlexInt64         `json:"notify_time,omitempty"`
 	TextElementStyle *TextElementStyle `json:"text_element_style,omitempty"`
 }
 
