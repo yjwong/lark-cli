@@ -708,11 +708,21 @@ Use the `obj_token` value with `doc get` to retrieve the document content.
 
 ```bash
 ./lark doc get <document-id>
+./lark doc get <document-id> --raw
 ```
 
 The document_id is the token from the document URL. For example:
 - URL: `https://xxx.larksuite.com/docx/ABC123xyz`
 - Document ID: `ABC123xyz`
+
+By default, uses a block-based renderer that produces clean markdown with proper tables, escaped syntax, and resolved `@mentions`. Use `--raw` for the legacy server-rendered markdown (which returns HTML tables).
+
+The block-based renderer:
+- Renders tables as markdown (not HTML)
+- Escapes markdown syntax in plain text (inline `*_[]~` and block-level `# > - 1.`)
+- Resolves `@mention` user IDs to display names (when contact scope is approved)
+- Renders Mermaid diagrams as fenced code blocks
+- Shows placeholders for embedded content: `[image: token]`, `[file: name]`, `[task: id]`, etc.
 
 Output:
 ```json
@@ -722,6 +732,33 @@ Output:
   "content": "# Heading\n\nDocument content as markdown..."
 }
 ```
+
+#### Download Document Images
+
+```bash
+# Download a single image
+./lark doc image <image_token> --doc <document-id> -o image.png
+
+# Batch download all images from a document
+./lark doc images <document-id> -o /tmp/images/
+```
+
+Image tokens are found in `doc get` output as `[image: TOKEN]` or in `doc blocks` output (block type 27).
+
+Single image output: binary image data to stdout (or file with `-o`).
+
+Batch download output:
+```json
+{
+  "document_id": "ABC123xyz",
+  "images": [
+    {"token": "boxcnABC", "file": "/tmp/images/boxcnABC.png"},
+    {"token": "boxcnDEF", "file": "/tmp/images/boxcnDEF.jpg"}
+  ]
+}
+```
+
+The batch command extracts all image tokens from the document, resolves download URLs, and downloads images in parallel. Image files are named `<token>.<ext>` with extension determined from content type.
 
 #### Get Document Block Structure
 
@@ -747,12 +784,31 @@ Block types:
 - 3-11: Headings (H1-H9)
 - 12: Bullet list
 - 13: Ordered list
-- 14: Code block
+- 14: Code block (75 languages supported)
 - 15: Quote
 - 17: Todo
+- 18: Bitable
+- 19: Callout
+- 20: Chat Card
+- 21: Diagram
 - 22: Divider
+- 23: File
+- 24: Grid (multi-column layout)
+- 25: Grid Column
+- 26: Iframe
 - 27: Image
+- 28: ISV
+- 29: Mindnote
+- 30: Sheet
 - 31: Table
+- 32: Table Cell
+- 33: View
+- 34: Quote Container
+- 35: Task
+- 36-39: OKR blocks
+- 40: Add-Ons (e.g., Mermaid diagrams — content in `add_ons.record`)
+- 41: Jira Issue
+- 42: Wiki Catalog
 
 #### Get Document Comments
 
@@ -935,10 +991,11 @@ For large documents, use `jq` and `grep` to extract specific information:
 
 | Format | Typical Size | Use Case |
 |--------|--------------|----------|
-| Markdown (`doc get`) | ~90 KB | Reading content, summarizing |
-| Blocks (`doc blocks`) | ~216 KB | Document manipulation, structure analysis |
+| Markdown (`doc get`) | ~22 KB | Reading content, summarizing, searching |
+| Legacy markdown (`doc get --raw`) | ~67 KB | Fallback if block-based output has issues |
+| Blocks (`doc blocks`) | ~523 KB | Document manipulation, structure analysis |
 
-Prefer `doc get` for most use cases - it's 2-3x smaller.
+Both `doc get` and `doc blocks` fetch the same block data from the API. `doc get` renders it as compact markdown (~20x smaller than raw blocks). Prefer `doc get` for most use cases. Use `--raw` for legacy server-rendered markdown if needed.
 
 ### Mail (IMAP)
 

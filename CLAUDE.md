@@ -86,6 +86,7 @@ See `USAGE.md` for full CLI documentation. Main commands:
 - `doc download <file_token> -o <path>` - Download a Drive file
 - `doc image <image_token> --doc <id>` - Download a document image
 - `doc wiki <node_token>` - Resolve wiki node to document token
+- `doc images <document_id> -o <dir>` - Batch download all images from a document
 - `doc wiki-children <node_token>` - List child wiki nodes
 - `doc wiki-search <query>` - Search wiki nodes
 

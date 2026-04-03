@@ -27,6 +27,35 @@ func (c *Client) GetUser(userID string, idType string) (*ContactUser, error) {
 	return resp.Data.User, nil
 }
 
+// BatchGetUsers retrieves multiple users by IDs in a single API call
+func (c *Client) BatchGetUsers(userIDs []string, idType string) ([]ContactUser, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	if idType == "" {
+		idType = "open_id"
+	}
+
+	params := url.Values{}
+	params.Set("user_id_type", idType)
+	for _, id := range userIDs {
+		params.Add("user_ids", id)
+	}
+
+	path := "/contact/v3/users/batch?" + params.Encode()
+
+	var resp BatchGetUserResponse
+	if err := c.Get(path, &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Code != 0 {
+		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Msg)
+	}
+
+	return resp.Data.Items, nil
+}
+
 // ListUsersByDepartment retrieves users directly under a department
 // deptID: the department ID (use "0" for root department)
 // pageSize: number of results per page (max 50)

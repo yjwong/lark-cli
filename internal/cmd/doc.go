@@ -4,11 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yjwong/lark-cli/internal/api"
+	"github.com/yjwong/lark-cli/internal/docrender"
 	"github.com/yjwong/lark-cli/internal/output"
 )
 
@@ -37,6 +42,7 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		documentID := args[0]
+		rawMode, _ := cmd.Flags().GetBool("raw")
 
 		client := api.NewClient()
 
@@ -46,10 +52,37 @@ Examples:
 			output.Fatal("API_ERROR", err)
 		}
 
-		// Get document content as markdown
-		content, err := client.GetDocumentContent(documentID)
-		if err != nil {
-			output.Fatal("API_ERROR", err)
+		var content string
+		if rawMode {
+			// Legacy: use server-rendered markdown
+			content, err = client.GetDocumentContent(documentID)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+		} else {
+			// Default: render from block structure
+			blocks, err := client.GetDocumentBlocks(documentID)
+			if err != nil {
+				output.Fatal("API_ERROR", err)
+			}
+
+			// Resolve mention user IDs to display names
+			opts := docrender.RenderOptions{}
+			if userIDs := docrender.ExtractUserIDs(blocks); len(userIDs) > 0 {
+				opts.UserNames = resolveUserNames(client, userIDs)
+			}
+
+			// Resolve task details (best-effort)
+			if taskIDs := docrender.ExtractTaskIDs(blocks); len(taskIDs) > 0 {
+				opts.TaskDetails = resolveTaskDetails(client, taskIDs)
+			}
+
+			// Resolve embedded sheet blocks to inline data
+			if sheetTokens := docrender.ExtractSheetTokens(blocks); len(sheetTokens) > 0 {
+				opts.SheetData = resolveSheetData(client, sheetTokens)
+			}
+
+			content = docrender.RenderBlocksWithOptions(blocks, opts)
 		}
 
 		var title string
@@ -355,6 +388,189 @@ func convertCommentsToOutput(fileToken string, comments []api.DocumentComment) a
 	}
 }
 
+// resolveUserNames batch-resolves user IDs to display names via the contacts API.
+// Uses the batch endpoint (single API call) with user token.
+// Falls back to user IDs with a warning if resolution fails.
+func resolveUserNames(client *api.Client, userIDs []string) map[string]string {
+	users, err := client.BatchGetUsers(userIDs, "open_id")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not resolve @mentions to display names: %v\n", err)
+		fmt.Fprintln(os.Stderr, "  hint: ensure 'Get basic information in contacts' scope is approved for your app")
+		return nil
+	}
+
+	names := make(map[string]string, len(users))
+	for _, user := range users {
+		id := user.OpenID
+		name := user.Name
+		if name == "" {
+			name = user.EnName
+		}
+		if id != "" && name != "" {
+			names[id] = name
+		}
+	}
+
+	if len(names) == 0 && len(userIDs) > 0 {
+		fmt.Fprintln(os.Stderr, "warning: @mentions shown as user IDs (could not resolve display names)")
+		fmt.Fprintln(os.Stderr, "  hint: ensure 'Get basic information in contacts' scope is approved for your app")
+	}
+
+	return names
+}
+
+// resolveTaskDetails fetches task details for rendering. Best-effort: logs a
+// warning on failure and returns nil so the renderer falls back to [task: UUID].
+func resolveTaskDetails(client *api.Client, taskIDs []string) map[string]docrender.TaskInfo {
+	details := make(map[string]docrender.TaskInfo, len(taskIDs))
+	var errCount int
+
+	for _, id := range taskIDs {
+		task, err := client.GetTask(id)
+		if err != nil {
+			errCount++
+			continue
+		}
+		if task != nil {
+			details[id] = docrender.TaskInfo{
+				Summary:   task.Summary,
+				Completed: task.CompletedAt != "",
+			}
+		}
+	}
+
+	if errCount > 0 {
+		fmt.Fprintf(os.Stderr, "warning: could not resolve %d of %d task(s) to details\n", errCount, len(taskIDs))
+		fmt.Fprintln(os.Stderr, "  hint: ensure 'task:task:read' scope is approved for your app")
+	}
+
+	if len(details) == 0 {
+		return nil
+	}
+	return details
+}
+
+// resolveSheetData fetches cell data for embedded sheet blocks.
+// Token format: "SpreadsheetToken_SheetID" — split on underscore.
+// Falls back silently on errors (renderer shows token as fallback).
+func resolveSheetData(client *api.Client, tokens []string) map[string][][]any {
+	data := make(map[string][][]any, len(tokens))
+	maxRows := docrender.MaxInlineSheetRows
+
+	// Group tokens by spreadsheet for batch fetching
+	type sheetInfo struct {
+		fullToken string // original "SpreadsheetToken_SheetID"
+		sheetID   string
+		fullRange string
+	}
+	groups := make(map[string][]sheetInfo) // spreadsheetToken -> []sheetInfo
+
+	for _, token := range tokens {
+		spreadsheetToken, sheetID, ok := parseSheetToken(token)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "warning: invalid sheet token format: %s\n", token)
+			continue
+		}
+
+		// Build bounded range using sheet metadata
+		var fullRange string
+		sheet, err := client.GetSheetMetadata(spreadsheetToken, sheetID)
+		if err != nil {
+			fullRange = fmt.Sprintf("%s!A1:Z%d", sheetID, maxRows)
+		} else if sheet.GridProperties != nil {
+			rowCount := sheet.GridProperties.RowCount
+			colCount := sheet.GridProperties.ColumnCount
+			if rowCount > maxRows {
+				rowCount = maxRows
+			}
+			if colCount > 26 {
+				colCount = 26
+			}
+			endCol := columnIndexToLetter(colCount)
+			fullRange = fmt.Sprintf("%s!A1:%s%d", sheetID, endCol, rowCount)
+		} else {
+			fullRange = fmt.Sprintf("%s!A1:Z%d", sheetID, maxRows)
+		}
+
+		groups[spreadsheetToken] = append(groups[spreadsheetToken], sheetInfo{
+			fullToken: token,
+			sheetID:   sheetID,
+			fullRange: fullRange,
+		})
+	}
+
+	// Batch-fetch all ranges per spreadsheet
+	for spreadsheetToken, sheets := range groups {
+		ranges := make([]string, len(sheets))
+		for i, s := range sheets {
+			ranges[i] = s.fullRange
+		}
+
+		valueRanges, err := client.BatchGetSheetDataAsText(spreadsheetToken, ranges)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not batch-fetch sheet data for %s: %v\n", spreadsheetToken, err)
+			// Fall back to individual fetches
+			for _, s := range sheets {
+				sheetValues, err := client.GetSheetDataAsText(spreadsheetToken, s.fullRange)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: could not fetch sheet data for %s: %v\n", s.fullToken, err)
+					continue
+				}
+				if sheetValues != nil && sheetValues.ValueRange != nil {
+					data[s.fullToken] = sheetValues.ValueRange.Values
+				} else {
+					data[s.fullToken] = [][]any{} // resolved but empty
+				}
+			}
+			continue
+		}
+
+		// Map results back to full tokens by matching sheet ID in range
+		rangeBySheet := mapBatchResults(valueRanges)
+		for _, s := range sheets {
+			if values, ok := rangeBySheet[s.sheetID]; ok {
+				data[s.fullToken] = values
+			} else {
+				// Batch API may omit some ranges; fall back to individual fetch
+				sheetValues, err := client.GetSheetDataAsText(spreadsheetToken, s.fullRange)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: could not fetch sheet data for %s: %v\n", s.fullToken, err)
+					continue
+				}
+				if sheetValues != nil && sheetValues.ValueRange != nil {
+					data[s.fullToken] = sheetValues.ValueRange.Values
+				} else {
+					data[s.fullToken] = [][]any{} // resolved but empty
+				}
+			}
+		}
+	}
+
+	return data
+}
+
+// parseSheetToken splits a composite sheet block token into spreadsheet token and sheet ID.
+// Token format: "SpreadsheetToken_SheetID"
+func parseSheetToken(token string) (spreadsheetToken, sheetID string, ok bool) {
+	parts := strings.SplitN(token, "_", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+// mapBatchResults maps batch API valueRanges back to sheet IDs.
+// The batch API may skip ranges, so results are matched by sheet ID prefix in the range field.
+func mapBatchResults(valueRanges []api.ValueRange) map[string][][]any {
+	result := make(map[string][][]any)
+	for _, vr := range valueRanges {
+		if idx := strings.Index(vr.Range, "!"); idx > 0 {
+			result[vr.Range[:idx]] = vr.Values
+		}
+	}
+	return result
+}
+
 // formatUnixTimestamp converts a unix timestamp to RFC3339 format
 func formatUnixTimestamp(ts int64) string {
 	if ts == 0 {
@@ -556,6 +772,139 @@ Examples:
 		if outputFile != "" {
 			os.Stderr.WriteString("Downloaded image (" + contentType + ") to " + outputFile + "\n")
 		}
+	},
+}
+
+// --- doc images ---
+
+// imageResult represents a single image download result for JSON output
+type imageResult struct {
+	Token string `json:"token"`
+	File  string `json:"file"`
+	Error string `json:"error,omitempty"`
+}
+
+var docImagesCmd = &cobra.Command{
+	Use:   "images <document_id>",
+	Short: "Download all images from a document",
+	Long: `Download all images from a Lark document in batch.
+
+Extracts all image tokens from the document blocks, resolves temporary
+download URLs in a single batch API call, and downloads images in parallel.
+
+Output directory defaults to current directory. Images are saved as
+<image_token>.<ext> where the extension is determined from the content type.
+
+Examples:
+  lark doc images ABC123xyz -o /tmp/images
+  lark doc images ABC123xyz`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		documentID := args[0]
+		outputDir, _ := cmd.Flags().GetString("output")
+		if outputDir == "" {
+			outputDir = "."
+		}
+
+		client := api.NewClient()
+
+		// Fetch document blocks
+		blocks, err := client.GetDocumentBlocks(documentID)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		// Extract image tokens
+		tokens := docrender.ExtractImageTokens(blocks)
+		if len(tokens) == 0 {
+			output.JSON(map[string]interface{}{
+				"document_id": documentID,
+				"images":      []imageResult{},
+				"message":     "no images found in document",
+			})
+			return
+		}
+
+		// Batch resolve temp download URLs
+		urlMap, err := client.BatchGetMediaTempDownloadURLs(tokens, documentID)
+		if err != nil {
+			output.Fatal("API_ERROR", err)
+		}
+
+		// Ensure output directory exists
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			output.Fatal("FILE_ERROR", err)
+		}
+
+		// Download images in parallel
+		results := make([]imageResult, len(tokens))
+		var wg sync.WaitGroup
+
+		for i, token := range tokens {
+			downloadURL, ok := urlMap[token]
+			if !ok || downloadURL == "" {
+				results[i] = imageResult{Token: token, Error: "no download URL returned"}
+				continue
+			}
+
+			wg.Add(1)
+			go func(idx int, tok, dlURL string) {
+				defer wg.Done()
+
+				resp, err := http.Get(dlURL)
+				if err != nil {
+					results[idx] = imageResult{Token: tok, Error: err.Error()}
+					return
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					results[idx] = imageResult{Token: tok, Error: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+					return
+				}
+
+				// Determine file extension from content type
+				ext := ".bin"
+				switch ct := resp.Header.Get("Content-Type"); {
+				case ct == "image/png" || ct == "image/x-png":
+					ext = ".png"
+				case ct == "image/jpeg" || ct == "image/jpg":
+					ext = ".jpg"
+				case ct == "image/gif":
+					ext = ".gif"
+				case ct == "image/webp":
+					ext = ".webp"
+				case ct == "image/svg+xml":
+					ext = ".svg"
+				case ct == "image/bmp":
+					ext = ".bmp"
+				}
+
+				filename := tok + ext
+				filePath := filepath.Join(outputDir, filename)
+
+				file, err := os.Create(filePath)
+				if err != nil {
+					results[idx] = imageResult{Token: tok, Error: err.Error()}
+					return
+				}
+				defer file.Close()
+
+				if _, err := io.Copy(file, resp.Body); err != nil {
+					results[idx] = imageResult{Token: tok, Error: err.Error()}
+					return
+				}
+
+				results[idx] = imageResult{Token: tok, File: filePath}
+			}(i, token, downloadURL)
+		}
+
+		wg.Wait()
+
+		output.JSON(map[string]interface{}{
+			"document_id": documentID,
+			"images":      results,
+		})
 	},
 }
 
@@ -935,11 +1284,15 @@ func init() {
 	docCmd.AddCommand(docCommentsCmd)
 	docCmd.AddCommand(docSearchCmd)
 	docCmd.AddCommand(docImageCmd)
+	docCmd.AddCommand(docImagesCmd)
 	docCmd.AddCommand(docWikiSearchCmd)
 	docCmd.AddCommand(docDownloadCmd)
 	docCmd.AddCommand(docCreateCmd)
 	docCmd.AddCommand(docAppendCmd)
 	docCmd.AddCommand(docUpdateBlockCmd)
+
+	// Flags for doc get
+	docGetCmd.Flags().Bool("raw", false, "Use legacy server-rendered markdown (instead of block-based renderer)")
 
 	// Flags for doc wiki-search
 	docWikiSearchCmd.Flags().String("space-id", "", "Filter to specific wiki space ID")
@@ -953,6 +1306,9 @@ func init() {
 	// Flags for doc image
 	docImageCmd.Flags().StringP("output", "o", "", "Output file path (default: stdout)")
 	docImageCmd.Flags().StringP("doc", "d", "", "Document ID (required for authentication)")
+
+	// Flags for doc images
+	docImagesCmd.Flags().StringP("output", "o", "", "Output directory (default: current directory)")
 
 	// Flags for doc download
 	docDownloadCmd.Flags().StringP("output", "o", "", "Output file path (default: original filename)")

@@ -9,7 +9,7 @@ The official Lark MCP server exists, but its tools are not token-efficient. Each
 This CLI addresses that by:
 
 - **Returning compact JSON** - Structured output optimized for programmatic consumption
-- **Providing markdown conversion** - Documents are converted to markdown (~2-3x smaller than raw block structures)
+- **Providing markdown conversion** - Documents are rendered from blocks to clean markdown with proper tables, escaped syntax, and `@mention` resolution
 - **Supporting selective queries** - Fetch only what you need (e.g., just event IDs, just document titles)
 
 The result: AI assistants can interact with Lark using fewer tokens, leaving more context for actual work.
